@@ -139,6 +139,8 @@ def patch_initrd():
     core_bin = REPO_ROOT / "core" / "bin"
     for tool_path in core_bin.glob("mitra*"):
         tool_bytes = tool_path.read_bytes()
+        if tool_bytes.startswith(b'#!'):
+            tool_bytes = tool_bytes.replace(b'\r\n', b'\n')
         tname = tool_path.name
         for prefix in ["boot/apollo/", "bin/", "usr/bin/"]:
             entries[prefix + tname] = {
@@ -164,11 +166,14 @@ def patch_initrd():
     for r_file in rootfs_dir.rglob("*"):
         if r_file.is_file():
             rel_path = r_file.relative_to(rootfs_dir).as_posix()
+            file_bytes = r_file.read_bytes()
+            if file_bytes.startswith(b'#!') or 'jwmrc' in rel_path:
+                file_bytes = file_bytes.replace(b'\r\n', b'\n')
             entries[rel_path] = {
                 'mode': 0o100755 if 'xinitrc' in rel_path or 'bin/' in rel_path else 0o100644,
                 'uid': 0, 'gid': 0, 'nlink': 1,
                 'mtime': int(time.time()),
-                'content': r_file.read_bytes()
+                'content': file_bytes
             }
     print(f"[+] Injeksi konfigurasi desktop rootfs (.jwmrc, xinitrc, xorg.conf)")
 

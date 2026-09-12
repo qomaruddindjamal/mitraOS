@@ -7,24 +7,14 @@
 #//////////////////////////////////////////////////////////////////
 
 # 1. AUTO-WRAPPER: If launched from Desktop Dock / Menu / Button without a terminal,
-# spawn an ultra-modern, centered, high-fidelity X11 window
+# spawn an interactive terminal window with TTY support
 if [ -n "$DISPLAY" ] && [ "$1" != "--run-terminal" ]; then
     if [ ! -t 0 ] || [ "$1" = "--gui" ] || [ "$1" = "-g" ]; then
-        exec /usr/bin/xterm \
-            -geometry 94x30+50+40 \
-            -T "System Preferences - MitraOS" \
-            -name "mitra-preferences" \
-            -class "MitraPreferences" \
-            -bg "#0b1329" \
-            -fg "#f8fafc" \
-            -cr "#00f2fe" \
-            -ms "#00f2fe" \
-            -bd "#00f2fe" \
-            -b 2 \
-            -fa "DejaVu Sans Mono" \
-            -fs 10 \
-            +sb \
-            -e "$0" --run-terminal "$@"
+        if [ -x /usr/bin/mitra-terminal ]; then
+            exec /usr/bin/mitra-terminal -title "System Preferences" -e "$0" --run-terminal "$@"
+        elif [ -x /usr/bin/xterm ]; then
+            exec /usr/bin/xterm -geometry 94x28+40+35 -bg '#0a0e17' -fg '#e2e8f0' -cr '#00f2fe' -ms '#00f2fe' -bd '#00f2fe' -title "System Preferences" -name "mitra-preferences" -class "MitraPreferences" -e "$0" --run-terminal "$@"
+        fi
     fi
 fi
 
@@ -66,7 +56,7 @@ menu_general() {
             "4" "Pilih Wallpaper Desktop" \
             "5" "Reload Desktop Interface (Refresh JWM)" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) show_info "Tema Desktop" "Tema Aktif: MitraOS Dark Modern\n\nDesain antarmuka berpusat pada kenyamanan mata dengan kontras tinggi, palet Slate #0b1329, dan aksen Electric Cyan." ;;
@@ -108,7 +98,7 @@ menu_display() {
             "5" "Resolusi 2560 x 1440 (2K QHD)" \
             "6" "Deteksi Otomatis Resolusi Layar Host" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) xrandr -s 1024x768 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
@@ -139,7 +129,7 @@ menu_sound() {
             "4" "Bisukan Suara (Mute Audio)" \
             "5" "Nyalakan Suara (Unmute Audio)" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) amixer sset Master 100% unmute 2>/dev/null || true ; show_info "Volume" "Volume disetel ke 100% (Maksimum)." ;;
@@ -209,7 +199,7 @@ menu_datetime() {
             "3" "WIT  (Asia/Jayapura - UTC+9)" \
             "4" "UTC  (Universal Coordinated Time)" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime 2>/dev/null || true ; show_info "Zona Waktu" "Zona waktu disetel ke WIB (Asia/Jakarta)." ;;
@@ -231,7 +221,7 @@ menu_language() {
             "2" "UK English (QWERTY Extended)" \
             "3" "German (QWERTZ)" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) setxkbmap us 2>/dev/null || true ; show_info "Keyboard" "Tata letak keyboard disetel ke US English." ;;
@@ -274,7 +264,7 @@ menu_power() {
             "3" "Layar Selalu Menyala (Jangan Pernah Tidur / Never Sleep)" \
             "4" "Matikan Komputer (Shutdown)" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1) xset dpms 600 600 600 2>/dev/null || true ; show_info "Power" "Timeout layar disetel ke 10 menit." ;;
@@ -319,7 +309,7 @@ menu_mouse() {
             "4" "Kecepatan Cepat (Multi-Monitor / 4K Screen)" \
             "5" "Uji Responsivitas Klik Mouse" \
             "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-        [[ -z "$sel" || "$sel" == "B" ]] && break
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
 
         case "$sel" in
             1)
@@ -373,7 +363,7 @@ while true; do
         "17" "Mouse           (Kalibrasi Pointer, Presisi 1:1 Host Sync)" \
         "X"  "Keluar" 3>&1 1>&2 2>&3)
 
-    [[ -z "$CHOICE" || "$CHOICE" == "X" ]] && break
+    [[ -z "$CHOICE" || "$CHOICE" =~ ^[Xx0Qq]$ ]] && break
 
     case "$CHOICE" in
         "01") menu_general ;;

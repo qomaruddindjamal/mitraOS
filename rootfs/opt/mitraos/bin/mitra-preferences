@@ -1,368 +1,389 @@
 #!/bin/bash
-{
-	#//////////////////////////////////////////////////////////////////
-	# MitraOS System Preferences - 23 Core Categories
-	# Founder: Qomaruddin Djamal
-	# Company: Citra Media Technology & Mitra Utama Group
-	# Location: /opt/mitraos/bin/mitra-preferences
-	#//////////////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////////////
+# MitraOS GUI System Preferences
+# Official Settings & System Configuration Center
+# Founder: Qomaruddin Djamal - Mitra Utama Group
+# Location: /usr/bin/mitra-preferences
+#//////////////////////////////////////////////////////////////////
 
-	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-	for g_lib in "$SCRIPT_DIR/../lib/mitra-globals" \
-	             "/opt/mitraos/lib/mitra-globals" \
-	             "/boot/apollo/func/mitra-globals" \
-	             "/boot/apollo/mitra-globals" \
-	             "/boot/mitraos/func/mitra-globals" \
-	             "/usr/lib/mitraos/mitra-globals" \
-	             "/usr/share/mitraos/mitra-globals"; do
-		if [[ -f "$g_lib" ]]; then
-			. "$g_lib"
-			break
-		fi
-	done
+# 1. AUTO-WRAPPER: If launched from Desktop Dock / Menu / Button without a terminal,
+# spawn an interactive terminal window with TTY support
+if [ -n "$DISPLAY" ] && [ "$1" != "--run-terminal" ]; then
+    if [ ! -t 0 ] || [ "$1" = "--gui" ] || [ "$1" = "-g" ]; then
+        if [ -x /usr/bin/mitra-terminal ]; then
+            exec /usr/bin/mitra-terminal -title "System Preferences" -e "$0" --run-terminal "$@"
+        elif [ -x /usr/bin/xterm ]; then
+            exec /usr/bin/xterm -geometry 94x28+40+35 -bg '#0a0e17' -fg '#e2e8f0' -cr '#00f2fe' -ms '#00f2fe' -bd '#00f2fe' -title "System Preferences" -name "mitra-preferences" -class "MitraPreferences" -e "$0" --run-terminal "$@"
+        fi
+    fi
+fi
 
-	# Safe Fallbacks if running standalone
-	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
-		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-16}" "${4:-74}" 2>/dev/null || echo -e "[$1]\n$2\n"; }
-	fi
-	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
-		G_CHECK_ROOT_USER() { :; }
-	fi
-	if ! declare -F G_EXIT_BANNER >/dev/null 2>&1; then
-		G_EXIT_BANNER() { clear; }
-	fi
+# Shift out internal flag if present
+[ "$1" = "--run-terminal" ] && shift
 
-	G_PROGRAM_NAME='MitraOS - System Preferences'
-	G_CHECK_ROOT_USER "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+for g_lib in "$SCRIPT_DIR/../lib/mitra-globals" \
+             "/opt/mitraos/lib/mitra-globals" \
+             "/boot/apollo/func/mitra-globals" \
+             "/boot/apollo/mitra-globals" \
+             "/usr/share/mitraos/mitra-globals"; do
+    if [[ -f "$g_lib" ]]; then
+        . "$g_lib"
+        break
+    fi
+done
 
-	# Helper message dialog
-	show_info() {
-		local title="$1"
-		local text="$2"
-		G_WHIP_MSG "$title" "$text" 16 74
-	}
+# Dialog UI Engine Fallback (whiptail or dialog)
+UI_BIN="whiptail"
+command -v whiptail >/dev/null 2>&1 || UI_BIN="dialog"
 
-	# -------------------------------------------------------------
-	# 1. Appearance
-	# -------------------------------------------------------------
-	menu_appearance() {
-		while true; do
-			local choice
-			choice=$(whiptail --title "System Preferences: Appearance" --menu "Pilih pengaturan tampilan:" 18 74 8 \
-				"1" "Theme (Mitra Dark / Slate / Light / Cupertino)" \
-				"2" "Light / Dark Mode" \
-				"3" "Accent Color (Electric Cyan, Amber, Sapphire, Emerald)" \
-				"4" "Icons (MitraOS Modern / Papirus / Flat-Remix)" \
-				"5" "Fonts (Inter, SF Pro, Roboto, JetBrains Mono)" \
-				"6" "Wallpaper (Ganti Latar Belakang MitraOS)" \
-				"7" "Window Style (macOS Traffic Light / Win11 Rounded)" \
-				"8" "Animations (Enable / Disable Window Transitions)" \
-				"B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-			[[ -z "$choice" || "$choice" == "B" ]] && break
-
-			case "$choice" in
-				1) show_info "Theme" "Tema Aktif: MitraOS Dark Modern (Slate & Neon Cyan)\n\nPreset tersedia:\n- MitraOS Dark Modern (Default)\n- Cupertino Glass (macOS Style)\n- Windows 11 Fluent Dark\n- High-Contrast Terminal Minimal" ;;
-				2) show_info "Light / Dark Mode" "Mode saat ini: DARK MODE (High Contrast)\n\nMode malam menghemat energi dan mengurangi kelelahan mata." ;;
-				3) show_info "Accent Color" "Warna Aksen Aktif: Electric Cyan (#00d2ff) & Amber (#ff6f00)." ;;
-				4) show_info "Icons" "Paket Ikon: MitraOS Vector Icons (Papirus based) aktif." ;;
-				5) show_info "Fonts" "Font Antarmuka: Inter 10pt\nFont Terminal: JetBrains Mono 11pt\nFont Window Title: SF Pro Display 10pt." ;;
-				6)
-					if [[ -x "$SCRIPT_DIR/mitra-desktop" ]]; then
-						"$SCRIPT_DIR/mitra-desktop" --wallpaper
-					else
-						show_info "Wallpaper" "Wallpaper Aktif: /usr/share/backgrounds/mitra-wallpaper.jpg"
-					fi
-					;;
-				7) show_info "Window Style" "Gaya Jendela: macOS Traffic Light Buttons (Kiri Atas: Merah, Kuning, Hijau) dengan sudut membulat 12px." ;;
-				8) show_info "Animations" "Animasi Jendela & Transisi: AKTIF (Compositor: Picom / Xfwm4)." ;;
-			esac
-		done
-	}
-
-	# -------------------------------------------------------------
-	# 2. Display
-	# -------------------------------------------------------------
-	menu_display() {
-		local curr_res="1920x1080"
-		if command -v xrandr >/dev/null 2>&1; then
-			curr_res=$(xrandr 2>/dev/null | grep '*' | awk '{print $1}' | head -n1)
-		fi
-		show_info "Display Settings" "Resolusi Layar Saat Ini: ${curr_res:-1920x1080}\nRefresh Rate: 60 Hz\nScale: 100% (HiDPI Auto-Detect)\nOrientation: Normal (Landscape)\nNight Light: Siap Dikonfigurasi (Redshift / sct)."
-	}
-
-	# -------------------------------------------------------------
-	# 3. Mouse & Touchpad (Kalibrasi Pointer & Presisi 1:1)
-	# -------------------------------------------------------------
-	menu_mouse() {
-		while true; do
-			local cur_accel="1/1 (Presisi)"
-			if command -v xset >/dev/null 2>&1; then
-				local cur_info
-				cur_info=$(xset q 2>/dev/null | grep -A 1 "Pointer Control" | tail -n 1 | awk '{print $2}')
-				[[ -n "$cur_info" ]] && cur_accel="$cur_info"
-			fi
-
-			local m_choice
-			m_choice=$(whiptail --title "Preferences: Mouse & Touchpad" --menu "Pengaturan & Kalibrasi Pointer (Status: $cur_accel):" 18 74 6 \
-				"1" "Presisi 1:1 Windows Host Sync (Sangat Akurat - Tanpa Lompat)" \
-				"2" "Kecepatan Halus / Smooth (Deceleration 1.5x)" \
-				"3" "Kecepatan Lambat (Untuk Touchpad Sensitif / Presisi Tinggi)" \
-				"4" "Kecepatan Normal Desktop (Akselerasi Standar 1:1)" \
-				"5" "Kecepatan Cepat (Fast Pointer Multiplier 2x)" \
-				"6" "Uji Responsivitas Klik & Gerakan Mouse" \
-				"B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
-			[[ -z "$m_choice" || "$m_choice" == "B" ]] && break
-
-			case "$m_choice" in
-				1)
-					xset m 1/1 0 2>/dev/null
-					show_info "Presisi 1:1 Host Sync" "Berhasil diterapkan!\n\nKursor mouse sekarang tersinkronisasi 1:1 dengan kursor Windows host tanpa percepatan liar (acceleration drift dinonaktifkan).\nKlik tombol menjadi presisi dan tidak meleset."
-					;;
-				2)
-					xset m 1/2 0 2>/dev/null
-					show_info "Kecepatan Halus" "Berhasil diterapkan!\n\nPergerakan kursor diperhalus (Smooth / Soft Glide), ideal untuk touchpad laptop agar kursor tidak meluncur terlalu jauh."
-					;;
-				3)
-					xset m 1/3 0 2>/dev/null
-					show_info "Kecepatan Lambat" "Berhasil diterapkan!\n\nSensitivitas diperlambat untuk kontrol piksel yang sangat presisi saat memilih teks atau menekan tombol kecil."
-					;;
-				4)
-					xset m 1 1 2>/dev/null
-					show_info "Kecepatan Normal" "Berhasil diterapkan!\n\nMode akselerasi standar desktop Linux aktif."
-					;;
-				5)
-					xset m 2/1 2 2>/dev/null
-					show_info "Kecepatan Cepat" "Berhasil diterapkan!\n\nMode cepat aktif (kecepatan pointer 2x untuk layar resolusi tinggi 2K/4K)."
-					;;
-				6)
-					whiptail --title "Area Uji Klik Mouse & Touchpad" --yesno "Silakan klik tombol di bawah ini untuk menguji responsivitas tombol mouse atau tap touchpad Anda.\n\nApakah klik terasa presisi dan tepat sasaran?" 12 70
-					if [[ $? -eq 0 ]]; then
-						show_info "Hasil Uji" "Bagus! Mouse dan touchpad Anda berfungsi dengan presisi tinggi."
-					else
-						show_info "Saran Kalibrasi" "Jika masih terasa terlalu jauh atau melompat, gunakan opsi [1] Presisi 1:1 atau [2] Kecepatan Halus."
-					fi
-					;;
-			esac
-		done
-	}
-
-	# -------------------------------------------------------------
-	# 4. Keyboard
-	# -------------------------------------------------------------
-	menu_keyboard() {
-		show_info "Keyboard" "Tata Letak Keyboard: US QWERTY (Bahasa Indonesia / English)\nRepeat Delay: 250ms | Repeat Rate: 30/s\nShortcuts Utama:\n- Super + Panah: Snap Layout Jendela\n- Super + Space: App Launcher\n- Super + T: Terminal MitraOS"
-	}
-
-	# -------------------------------------------------------------
-	# 5. Network
-	# -------------------------------------------------------------
-	menu_network() {
-		local ip_info
-		ip_info=$(ip -4 addr show 2>/dev/null | grep -E 'inet ' | awk '{print $NF ": " $2}' | tr '\n' ' ')
-		show_info "Network Information" "Status Jaringan MitraOS:\n\nKoneksi Aktif:\n${ip_info:-127.0.0.1 (Loopback)}\n\nDNS: 1.1.1.1, 8.8.8.8\nFirewall: UFW Aktif (Default DENY Incoming, ALLOW Outgoing)."
-	}
-
-	# -------------------------------------------------------------
-	# 6. Sound
-	# -------------------------------------------------------------
-	menu_sound() {
-		show_info "Sound & Audio" "Audio Engine: ALSA / PulseAudio / PipeWire\nMaster Volume: 75%\nOutput Default: Built-in Audio Stereo\nInput: Mikrofon Internal\nSound Effects: Clean Subtle Chimes."
-	}
-
-	# -------------------------------------------------------------
-	# 7. Bluetooth
-	# -------------------------------------------------------------
-	menu_bluetooth() {
-		show_info "Bluetooth" "Bluetooth Subsystem: BlueZ 5\nStatus: Siap dipasangkan dengan keyboard, mouse, headphone, dan perangkat BLE."
-	}
-
-	# -------------------------------------------------------------
-	# 8. Printers & Devices
-	# -------------------------------------------------------------
-	menu_printers() {
-		show_info "Printers & Devices" "Spooler: CUPS Printing Daemon\nDriverless IPP / AirPrint: Didukung\nUSB Scanner & Storage: Auto-Mount Aktif."
-	}
-
-	# -------------------------------------------------------------
-	# 9. Users & Accounts
-	# -------------------------------------------------------------
-	menu_users() {
-		local user_list
-		user_list=$(awk -F: '$3 >= 1000 {print $1 " (UID " $3 ")"}' /etc/passwd 2>/dev/null | head -n5)
-		show_info "Users & Accounts" "Daftar Pengguna MitraOS:\n${user_list:-mitra (UID 1000)}\n\nAdministrator: root (sudo enabled)\nAutologin: Dikonfigurasi via LightDM / getty."
-	}
-
-	# -------------------------------------------------------------
-	# 10. Privacy & Security
-	# -------------------------------------------------------------
-	menu_security() {
-		show_info "Privacy & Security" "Audit Keamanan MitraOS:\n- Firewall: UFW / Iptables Aktif\n- Remote SSH: Port 22 (Dropbear/OpenSSH)\n- Kernel Hardening: sysctl memory protect aktif\n- Telemetri Eksternal: NONAKTIF (100% Privacy-First)."
-	}
-
-	# -------------------------------------------------------------
-	# 11. Software & Updates
-	# -------------------------------------------------------------
-	menu_software() {
-		if [[ -x "$SCRIPT_DIR/mitra-software" ]]; then
-			"$SCRIPT_DIR/mitra-software"
-		else
-			show_info "Software & Updates" "Katalog Software MitraOS:\n- Suite Web Server (Nginx, MariaDB, PHP)\n- Suite Kreatif (GIMP, Inkscape, VLC)\n- Developer Hub (Git, Python, Node, VSCodium)\n- Antigravity AI Engine."
-		fi
-	}
-
-	# -------------------------------------------------------------
-	# 12. Storage
-	# -------------------------------------------------------------
-	menu_storage() {
-		local df_info
-		df_info=$(df -h / 2>/dev/null | tail -n1 | awk '{print "Root: " $2 " Total, " $3 " Terpakai, " $4 " Bebas (" $5 ")"}')
-		show_info "Storage Manager" "Informasi Penyimpanan MitraOS:\n\n$df_info\n\nManajer Disk: parted, mkfs.ext4, mkfs.fat, e2fsprogs siap digunakan."
-	}
-
-	# -------------------------------------------------------------
-	# 13. Power
-	# -------------------------------------------------------------
-	menu_power() {
-		show_info "Power Management" "Profil Daya: Balanced (Optimized for Efficiency)\nScreen Timeout: 15 Menit\nSleep / Suspend: Siap\nOptimasi Low-RAM: ZRAM swap ganda aktif."
-	}
-
-	# -------------------------------------------------------------
-	# 14. Date & Time
-	# -------------------------------------------------------------
-	menu_datetime() {
-		local now_dt
-		now_dt=$(date "+%A, %d %B %Y - %T %Z")
-		show_info "Date & Time" "Waktu Sistem Saat Ini:\n$now_dt\n\nSinkronisasi NTP: systemd-timesyncd aktif\nZona Waktu Default: Asia/Jakarta (WIB)."
-	}
-
-	# -------------------------------------------------------------
-	# 15. Language & Region
-	# -------------------------------------------------------------
-	menu_language() {
-		show_info "Language & Region" "Bahasa Sistem: Bahasa Indonesia / English (US)\nFormat Tanggal: DD/MM/YYYY\nFormat Waktu: 24 Jam (HH:MM:SS)\nMata Uang: IDR (Rp) / USD ($)."
-	}
-
-	# -------------------------------------------------------------
-	# 16. Desktop
-	# -------------------------------------------------------------
-	menu_desktop() {
-		if [[ -x "$SCRIPT_DIR/mitra-desktop" ]]; then
-			"$SCRIPT_DIR/mitra-desktop"
-		else
-			show_info "Desktop Environment" "Profil Desktop MitraOS:\n- macOS Style (Top-bar + Centered Dock + Traffic Lights)\n- Windows 11 Style (Centered Taskbar)\n- Ultra-Low RAM Openbox (<35 MB RAM)."
-		fi
-	}
-
-	# -------------------------------------------------------------
-	# 17. Windows & Window Manager
-	# -------------------------------------------------------------
-	menu_windows() {
-		show_info "Windows & Window Manager" "Window Manager: Openbox / Xfwm4 / KWin\nFokus Jendela: Click to Focus\nSnap Layout: Mitra-Snap aktif (Windows 11 Grid)\nTitlebar Controls: Traffic Light Buttons (Kiri Atas)."
-	}
-
-	# -------------------------------------------------------------
-	# 18. Startup & Services
-	# -------------------------------------------------------------
-	menu_startup() {
-		show_info "Startup Applications" "Aplikasi Saat Booting:\n- MitraOS Dynamic Banner\n- MitraOS First-Boot Service\n- ZRAM Swap Compressor\n- NetworkManager / WPA Supplicant."
-	}
-
-	# -------------------------------------------------------------
-	# 19. Accessibility
-	# -------------------------------------------------------------
-	menu_a11y() {
-		show_info "Accessibility" "Aksesibilitas MitraOS:\n- High Contrast Theme\n- Large Text Mode (120% / 150% Scale)\n- Screen Reader (Orca)\n- Sticky Keys & Slow Keys."
-	}
-
-	# -------------------------------------------------------------
-	# 20. File Manager
-	# -------------------------------------------------------------
-	menu_filemanager() {
-		show_info "File Manager" "Manajer Berkas Default: Thunar / PCManFM\nFitur: Tabbed browsing, icon preview, auto-mount USB drive, dual-pane."
-	}
-
-	# -------------------------------------------------------------
-	# 21. Notifications
-	# -------------------------------------------------------------
-	menu_notifications() {
-		show_info "Notifications" "Notification Daemon: Dunst / Xfce4-Notifyd\nPosisi: Kanan Atas (Gaya Modern)\nMode Jangan Ganggu (Do Not Disturb): Siap diaktifkan."
-	}
-
-	# -------------------------------------------------------------
-	# 22. Default Applications
-	# -------------------------------------------------------------
-	menu_default_apps() {
-		show_info "Default Applications" "Aplikasi Bawaan MitraOS:\n- Browser: Chromium / Firefox\n- File Manager: Thunar / PCManFM\n- Email: SnappyMail Web Client\n- Media Player: MPV / VLC\n- Terminal: MitraOS Terminal (XFCE Terminal / Alacritty)."
-	}
-
-	# -------------------------------------------------------------
-	# 23. System Information
-	# -------------------------------------------------------------
-	menu_system_info() {
-		local kern_ver
-		kern_ver=$(uname -r 2>/dev/null || echo "6.1.0-mitraos")
-		show_info "About MitraOS" "=== MITRAOS V.1 (APOLLO EDITION) ===\n\nFounder: Qomaruddin Djamal\nOrganisasi: Citra Media Technology & Mitra Utama Group\nArsitektur: $G_HW_ARCH ($G_HW_ARCH_DESC)\nKernel: Linux $kern_ver\nCPU: $G_HW_CPU_MODEL\nRAM Total: ${G_HW_RAM_MB} MB\n\nLisensi: Open-Source Enterprise Community License."
-	}
-
-	# -------------------------------------------------------------
-	# Main 23-Menu System Preferences Loop
-	# -------------------------------------------------------------
-	while true; do
-		local sel
-		sel=$(whiptail --title "MitraOS V.1 - System Preferences" --menu "Pilih kategori preferensi sistem:" 22 76 14 \
-			"01" "Appearance (Theme, Dark Mode, Icons, Fonts, Wallpaper)" \
-			"02" "Display (Resolution, Scale, Multiple Displays)" \
-			"03" "Mouse & Touchpad (Speed, Scrolling, Gestures)" \
-			"04" "Keyboard (Layout, Input Method, Shortcuts)" \
-			"05" "Network (Wi-Fi, Ethernet, DNS, Firewall)" \
-			"06" "Sound (Volume, Output, Input, Effects)" \
-			"07" "Bluetooth (Devices, Pair, Settings)" \
-			"08" "Printers & Devices (Printers, Scanners, USB)" \
-			"09" "Users & Accounts (Users, Passwords, Admin)" \
-			"10" "Privacy & Security (Permissions, Firewall, Updates)" \
-			"11" "Software & Updates (Repositories, Software Center)" \
-			"12" "Storage (Disks, Partitions, Mounts, Usage)" \
-			"13" "Power (Battery, Profiles, Sleep, Hibernate)" \
-			"14" "Date & Time (Timezone, NTP, Clock)" \
-			"15" "Language & Region (Language, Locale, Formats)" \
-			"16" "Desktop (macOS / Win11 Styles, Dock, Panel)" \
-			"17" "Windows (Snap Layout, Behavior, Traffic Lights)" \
-			"18" "Startup (Auto-start Apps, Daemons, Services)" \
-			"19" "Accessibility (Large Text, High Contrast, Screen Reader)" \
-			"20" "File Manager (Folders, Thumbnails, Hidden Files)" \
-			"21" "Notifications (Banners, Do Not Disturb, Position)" \
-			"22" "Default Applications (Browser, Mail, Player, Terminal)" \
-			"23" "System Info (About MitraOS, Hardware, Kernel, License)" \
-			"X"  "Keluar ke Terminal" 3>&1 1>&2 2>&3)
-		
-		[[ -z "$sel" || "$sel" == "X" ]] && break
-
-		case "$sel" in
-			"01") menu_appearance ;;
-			"02") menu_display ;;
-			"03") menu_mouse ;;
-			"04") menu_keyboard ;;
-			"05") menu_network ;;
-			"06") menu_sound ;;
-			"07") menu_bluetooth ;;
-			"08") menu_printers ;;
-			"09") menu_users ;;
-			"10") menu_security ;;
-			"11") menu_software ;;
-			"12") menu_storage ;;
-			"13") menu_power ;;
-			"14") menu_datetime ;;
-			"15") menu_language ;;
-			"16") menu_desktop ;;
-			"17") menu_windows ;;
-			"18") menu_startup ;;
-			"19") menu_a11y ;;
-			"20") menu_filemanager ;;
-			"21") menu_notifications ;;
-			"22") menu_default_apps ;;
-			"23") menu_system_info ;;
-		esac
-	done
-
-	G_EXIT_BANNER
+show_info() {
+    local title="$1"
+    local text="$2"
+    "$UI_BIN" --title "$title" --msgbox "$text" 16 76 2>/dev/null || echo -e "[$title]\n$text\n"
 }
+
+# -------------------------------------------------------------
+# 01. Umum (General)
+# -------------------------------------------------------------
+menu_general() {
+    while true; do
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Umum (General)" --menu "Konfigurasi tampilan dan personalisasi umum sistem:" 18 76 6 \
+            "1" "Tema Desktop (MitraOS Dark Modern / Slate Glass)" \
+            "2" "Warna Aksen (Electric Cyan & Amber Gold)" \
+            "3" "Efek Jendela (macOS Traffic Light Buttons)" \
+            "4" "Pilih Wallpaper Desktop" \
+            "5" "Reload Desktop Interface (Refresh JWM)" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) show_info "Tema Desktop" "Tema Aktif: MitraOS Dark Modern\n\nDesain antarmuka berpusat pada kenyamanan mata dengan kontras tinggi, palet Slate #0b1329, dan aksen Electric Cyan." ;;
+            2) show_info "Warna Aksen" "Aksen Aktif: Electric Cyan (#00f2fe) & Amber Gold (#f59e0b).\nAksen ini diterapkan pada dock, jendela aktif, dan kursor pointer." ;;
+            3) show_info "Efek Jendela" "Gaya Jendela: macOS Traffic Light Buttons (Merah = Tutup, Kuning = Minimalkan, Hijau = Maksimalkan) terletak di sudut kiri atas setiap jendela." ;;
+            4)
+                if [ -x /usr/bin/mitra-wallpaper ]; then
+                    /usr/bin/mitra-wallpaper --auto
+                    show_info "Wallpaper" "Wallpaper MitraOS telah disegarkan secara otomatis menyesuaikan resolusi layar Anda."
+                elif [ -f /usr/share/mitraos/wallpaper.jpg ] && command -v feh >/dev/null 2>&1; then
+                    feh --bg-fill /usr/share/mitraos/wallpaper.jpg
+                    show_info "Wallpaper" "Wallpaper resmi MitraOS telah diterapkan."
+                fi
+                ;;
+            5)
+                jwm -restart 2>/dev/null || true
+                show_info "Refresh Desktop" "Antarmuka desktop berhasil dimuat ulang (JWM UI reloaded)."
+                ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 02. Tampilan (Display)
+# -------------------------------------------------------------
+menu_display() {
+    while true; do
+        local cur_res="1024x768"
+        if command -v xrandr >/dev/null 2>&1; then
+            cur_res=$(xrandr 2>/dev/null | grep '*' | awk '{print $1}' | head -n1)
+        fi
+
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Tampilan (Display)" --menu "Pengaturan Resolusi Layar (Resolusi Saat Ini: ${cur_res:-1024x768}):" 18 76 7 \
+            "1" "Resolusi 1024 x 768  (Standar VM & Proyektor)" \
+            "2" "Resolusi 1280 x 720  (HD 720p 16:9)" \
+            "3" "Resolusi 1366 x 768  (Laptop HD)" \
+            "4" "Resolusi 1920 x 1080 (Full HD 1080p)" \
+            "5" "Resolusi 2560 x 1440 (2K QHD)" \
+            "6" "Deteksi Otomatis Resolusi Layar Host" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) xrandr -s 1024x768 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
+            2) xrandr -s 1280x720 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
+            3) xrandr -s 1366x768 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
+            4) xrandr -s 1920x1080 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
+            5) xrandr -s 2560x1440 2>/dev/null || true ; /usr/bin/mitra-wallpaper --auto 2>/dev/null || true ;;
+            6)
+                if [ -x /usr/bin/mitra-wallpaper ]; then
+                    /usr/bin/mitra-wallpaper --auto
+                fi
+                show_info "Deteksi Otomatis" "Resolusi layar dan wallpaper telah disesuaikan secara otomatis."
+                ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 03. Suara (Sound)
+# -------------------------------------------------------------
+menu_sound() {
+    while true; do
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Suara (Sound)" --menu "Pengaturan Volume & Output Audio Sistem:" 18 76 6 \
+            "1" "Volume Maksimum (100%)" \
+            "2" "Volume Sedang (70%)" \
+            "3" "Volume Rendah (30%)" \
+            "4" "Bisukan Suara (Mute Audio)" \
+            "5" "Nyalakan Suara (Unmute Audio)" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) amixer sset Master 100% unmute 2>/dev/null || true ; show_info "Volume" "Volume disetel ke 100% (Maksimum)." ;;
+            2) amixer sset Master 70% unmute 2>/dev/null || true ; show_info "Volume" "Volume disetel ke 70% (Sedang)." ;;
+            3) amixer sset Master 30% unmute 2>/dev/null || true ; show_info "Volume" "Volume disetel ke 30% (Rendah)." ;;
+            4) amixer sset Master mute 2>/dev/null || true ; show_info "Mute" "Audio sistem dibisukan (Muted)." ;;
+            5) amixer sset Master unmute 2>/dev/null || true ; show_info "Unmute" "Audio sistem diaktifkan kembali." ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 04. Jaringan (Network)
+# -------------------------------------------------------------
+menu_network() {
+    local ip_addr
+    ip_addr=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n1)
+    [ -z "$ip_addr" ] && ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$ip_addr" ] && ip_addr="127.0.0.1 (Offline / Host-Only)"
+
+    show_info "Status Jaringan (Network)" "Alamat IP Utama : $ip_addr\nHostname       : $(hostname)\nStatus DNS     : Aktif (Systemd-resolved / /etc/resolv.conf)\n\nKoneksi Internet & Jaringan Lokal siap digunakan untuk browsing, transfer file, dan remote access."
+}
+
+# -------------------------------------------------------------
+# 05. Bluetooth
+# -------------------------------------------------------------
+menu_bluetooth() {
+    show_info "Bluetooth" "Subsystem Bluetooth: BlueZ 5\nStatus Adapter: Siap dipasangkan\n\nMendukung koneksi nirkabel BLE, mouse, keyboard, headphone, dan perangkat audio nirkabel."
+}
+
+# -------------------------------------------------------------
+# 06. Perangkat (Devices & USB)
+# -------------------------------------------------------------
+menu_devices() {
+    local blk_info
+    blk_info=$(lsblk -o NAME,SIZE,TYPE,MOUNTPOINT 2>/dev/null || echo "Tidak ada media eksternal terdeteksi.")
+    show_info "Perangkat Penyimpanan (Storage & USB)" "Daftar Perangkat Terdeteksi:\n\n$blk_info\n\nFlashdisk USB dan hard disk eksternal otomatis terdeteksi."
+}
+
+# -------------------------------------------------------------
+# 07. Akun (Users & Accounts)
+# -------------------------------------------------------------
+menu_accounts() {
+    local cur_user
+    cur_user=$(whoami)
+    show_info "Akun Pengguna (Users & Accounts)" "Pengguna Aktif: $cur_user\nHak Akses     : Administrator (Root Privilege)\nDirektori Home: $HOME\nShell Aktif   : $SHELL\n\nAnda memiliki hak penuh untuk mengelola konfigurasi sistem MitraOS."
+}
+
+# -------------------------------------------------------------
+# 08. Keamanan (Security)
+# -------------------------------------------------------------
+menu_security() {
+    show_info "Keamanan & Firewall" "Status Keamanan MitraOS:\n\n- Firewall Kernel   : Siap (Netfilter / Iptables)\n- Proteksi Memori   : ASLR (Address Space Layout Randomization) Aktif\n- Mode Eksekusi     : Sandbox Sesi Mandiri (RAM Overlay)\n- Keamanan Berkas   : Enkripsi Standar Linux LUKS Siap Pakai"
+}
+
+# -------------------------------------------------------------
+# 09. Tanggal & Waktu (Date & Time)
+# -------------------------------------------------------------
+menu_datetime() {
+    while true; do
+        local cur_time
+        cur_time=$(date "+%A, %d %B %Y - %H:%M:%S %Z")
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Tanggal & Waktu" --menu "Waktu Sistem Saat Ini:\n$cur_time\n\nPilih Zona Waktu Indonesia:" 18 76 5 \
+            "1" "WIB  (Asia/Jakarta - UTC+7)" \
+            "2" "WITA (Asia/Makassar - UTC+8)" \
+            "3" "WIT  (Asia/Jayapura - UTC+9)" \
+            "4" "UTC  (Universal Coordinated Time)" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime 2>/dev/null || true ; show_info "Zona Waktu" "Zona waktu disetel ke WIB (Asia/Jakarta)." ;;
+            2) ln -sf /usr/share/zoneinfo/Asia/Makassar /etc/localtime 2>/dev/null || true ; show_info "Zona Waktu" "Zona waktu disetel ke WITA (Asia/Makassar)." ;;
+            3) ln -sf /usr/share/zoneinfo/Asia/Jayapura /etc/localtime 2>/dev/null || true ; show_info "Zona Waktu" "Zona waktu disetel ke WIT (Asia/Jayapura)." ;;
+            4) ln -sf /usr/share/zoneinfo/UTC /etc/localtime 2>/dev/null || true ; show_info "Zona Waktu" "Zona waktu disetel ke UTC." ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 10. Bahasa & Wilayah (Language & Region)
+# -------------------------------------------------------------
+menu_language() {
+    while true; do
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Bahasa & Keyboard" --menu "Pilih Tata Letak Keyboard (Keyboard Layout):" 18 76 4 \
+            "1" "US English (QWERTY Standar)" \
+            "2" "UK English (QWERTY Extended)" \
+            "3" "German (QWERTZ)" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) setxkbmap us 2>/dev/null || true ; show_info "Keyboard" "Tata letak keyboard disetel ke US English." ;;
+            2) setxkbmap gb 2>/dev/null || true ; show_info "Keyboard" "Tata letak keyboard disetel ke UK English." ;;
+            3) setxkbmap de 2>/dev/null || true ; show_info "Keyboard" "Tata letak keyboard disetel ke German." ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 11. Pembaruan (Software Updates)
+# -------------------------------------------------------------
+menu_updates() {
+    show_info "Pembaruan Sistem (Software Updates)" "MitraOS V.1 (Apollo Edition)\nStatus: Versi Terbaru (Up to date)\n\nRepositori paket terpusat siap mengunduh pembaruan modul dan driver tambahan secara aman."
+}
+
+# -------------------------------------------------------------
+# 12. Aplikasi (Applications)
+# -------------------------------------------------------------
+menu_applications() {
+    show_info "Aplikasi Bawaan (Default Applications)" "Aplikasi Default MitraOS:\n\n- File Manager     : Workstation Explorer / Midnight Commander\n- Terminal Emulator : MitraOS Terminal (XTerm Modern)\n- Penampil Gambar  : Feh Fast Image Viewer\n- Pengatur Jendela  : JWM (Joe's Window Manager) Cupertino Edition"
+}
+
+# -------------------------------------------------------------
+# 13. Privasi (Privacy)
+# -------------------------------------------------------------
+menu_privacy() {
+    show_info "Privasi (Privacy)" "Perlindungan Privasi MitraOS:\n\n- Tanpa Telemetri Tersembunyi (100% Bersih & Privat)\n- Riwayat sesi live berjalan di RAM, otomatis bersih saat sistem dimatikan\n- Akses perangkat keras sepenuhnya dalam kendali Anda."
+}
+
+# -------------------------------------------------------------
+# 14. Daya (Power & Battery)
+# -------------------------------------------------------------
+menu_power() {
+    while true; do
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Daya (Power & Battery)" --menu "Pengaturan Hemat Daya & Layar Tidur (Screen Timeout):" 18 76 5 \
+            "1" "Layar Tidur Setelah 10 Menit" \
+            "2" "Layar Tidur Setelah 30 Menit" \
+            "3" "Layar Selalu Menyala (Jangan Pernah Tidur / Never Sleep)" \
+            "4" "Matikan Komputer (Shutdown)" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1) xset dpms 600 600 600 2>/dev/null || true ; show_info "Power" "Timeout layar disetel ke 10 menit." ;;
+            2) xset dpms 1800 1800 1800 2>/dev/null || true ; show_info "Power" "Timeout layar disetel ke 30 menit." ;;
+            3) xset -dpms s off 2>/dev/null || true ; show_info "Power" "Layar diatur untuk selalu menyala (Never Sleep)." ;;
+            4) poweroff 2>/dev/null || shutdown -h now 2>/dev/null || true ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# 15. Sistem & Hardware (Hardware Info)
+# -------------------------------------------------------------
+menu_hardware() {
+    local cpu_info
+    cpu_info=$(lscpu 2>/dev/null | grep -E "Model name|CPU\(s\):" | sed 's/^[ \t]*//' || grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2)
+    local mem_info
+    mem_info=$(free -h 2>/dev/null || free -m)
+
+    show_info "Informasi Perangkat Keras (System & Hardware)" "Spesifikasi Komputer:\n\nCPU:\n$cpu_info\n\nMemori RAM:\n$mem_info\n\nArsitektur: $(uname -m) (64-bit)"
+}
+
+# -------------------------------------------------------------
+# 16. Tentang MitraOS (About) - MENGGUNAKAN IDENTITAS LOGO ASLI
+# -------------------------------------------------------------
+menu_about() {
+    local kern_ver
+    kern_ver=$(uname -r 2>/dev/null || echo "6.1.0-mitraos")
+    show_info "Tentang MitraOS (About)" "====================================================\n               MITRAOS V.1 (APOLLO EDITION)        \n====================================================\n\nIdentitas : Sistem Operasi Produktif, Cepat & Mandiri\nFounder   : Qomaruddin Djamal\nOrganisasi: Citra Media Technology & Mitra Utama Group\nKernel    : Linux $kern_ver (x86_64)\nDesain    : Simple - Modern - Productive\nLisensi   : Open-Source Enterprise Community Edition\n\nTerima kasih telah menggunakan MitraOS!"
+}
+
+# -------------------------------------------------------------
+# 17. Mouse & Touchpad (Presisi 1:1 Windows Host Sync)
+# -------------------------------------------------------------
+menu_mouse() {
+    while true; do
+        local sel
+        sel=$("$UI_BIN" --title "System Preferences: Mouse & Touchpad" --menu "Pengaturan Kecepatan & Kalibrasi Pointer Kursor:" 18 76 6 \
+            "1" "Presisi 1:1 Windows Host Sync (Rekomendasi - Menyatu Sempurna)" \
+            "2" "Kecepatan Halus (Smooth Motion / Touchpad Laptop)" \
+            "3" "Kecepatan Lambat (Presisi Piksel Tinggi)" \
+            "4" "Kecepatan Cepat (Multi-Monitor / 4K Screen)" \
+            "5" "Uji Responsivitas Klik Mouse" \
+            "B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+        [[ -z "$sel" || "$sel" =~ ^[Bb0XxQq]$ ]] && break
+
+        case "$sel" in
+            1)
+                xset m 1/1 0 2>/dev/null || true
+                xsetroot -cursor_name left_ptr 2>/dev/null || true
+                show_info "Presisi 1:1" "Berhasil diterapkan!\n\nKursor mouse sekarang tersinkronisasi 1:1 absolut dengan kursor Windows host tanpa ada selisih jarak atau lompatan klik."
+                ;;
+            2)
+                xset m 1/2 0 2>/dev/null || true
+                show_info "Kecepatan Halus" "Mode pergerakan halus (Smooth Glide) telah diterapkan."
+                ;;
+            3)
+                xset m 1/3 0 2>/dev/null || true
+                show_info "Kecepatan Lambat" "Mode presisi piksel lambat telah diterapkan."
+                ;;
+            4)
+                xset m 2/1 2 2>/dev/null || true
+                show_info "Kecepatan Cepat" "Mode pergerakan cepat 2x telah diterapkan."
+                ;;
+            5)
+                "$UI_BIN" --title "Area Uji Klik Mouse & Touchpad" --yesno "Silakan klik tombol di bawah ini untuk menguji responsivitas tombol mouse atau tap touchpad Anda.\n\nApakah klik terasa presisi dan menyatu tepat sasaran?" 12 70
+                if [[ $? -eq 0 ]]; then
+                    show_info "Hasil Uji" "Bagus! Mouse dan touchpad Anda berfungsi dengan presisi tinggi dan menyatu."
+                fi
+                ;;
+        esac
+    done
+}
+
+# -------------------------------------------------------------
+# MAIN DASHBOARD: 16 Kategori Resmi MitraOS Icon Pack + Mouse
+# -------------------------------------------------------------
+while true; do
+    CHOICE=$("$UI_BIN" --title "MitraOS V.1 - System Preferences" --menu "Pilih kategori preferensi dan konfigurasi sistem MitraOS:" 24 78 17 \
+        "01" "Umum            (Tema, Wallpaper, Aksen Warna, Jendela)" \
+        "02" "Tampilan        (Resolusi Layar, Multi-Monitor, Refresh Rate)" \
+        "03" "Suara           (Volume Master, Status Mute, Audio Output)" \
+        "04" "Jaringan        (Koneksi Internet, IP Address, Wi-Fi, LAN)" \
+        "05" "Bluetooth       (Perangkat Nirkabel, Pemasangan BLE)" \
+        "06" "Perangkat       (Penyimpanan USB, Partisi Hard Disk)" \
+        "07" "Akun            (Profil Pengguna, Kata Sandi, Izin Admin)" \
+        "08" "Keamanan        (Firewall, Proteksi Sistem, Enkripsi)" \
+        "09" "Tanggal & Waktu (Sinkronisasi Jam NTP, Zona Waktu WIB/WITA/WIT)" \
+        "10" "Bahasa          (Tata Letak Keyboard, Format Wilayah)" \
+        "11" "Pembaruan       (Pembaruan Paket & Sistem MitraOS)" \
+        "12" "Aplikasi        (Aplikasi Bawaan & Pengelola Berkas)" \
+        "13" "Privasi         (Perlindungan Data & Riwayat Sesi)" \
+        "14" "Daya            (Penghematan Baterai, Screen Sleep Timeout)" \
+        "15" "Sistem          (Informasi CPU, Memori RAM, Utilisasi)" \
+        "16" "Tentang         (Identitas Resmi MitraOS, Kernel, Lisensi)" \
+        "17" "Mouse           (Kalibrasi Pointer, Presisi 1:1 Host Sync)" \
+        "X"  "Keluar" 3>&1 1>&2 2>&3)
+
+    [[ -z "$CHOICE" || "$CHOICE" =~ ^[Xx0Qq]$ ]] && break
+
+    case "$CHOICE" in
+        "01") menu_general ;;
+        "02") menu_display ;;
+        "03") menu_sound ;;
+        "04") menu_network ;;
+        "05") menu_bluetooth ;;
+        "06") menu_devices ;;
+        "07") menu_accounts ;;
+        "08") menu_security ;;
+        "09") menu_datetime ;;
+        "10") menu_language ;;
+        "11") menu_updates ;;
+        "12") menu_applications ;;
+        "13") menu_privacy ;;
+        "14") menu_power ;;
+        "15") menu_hardware ;;
+        "16") menu_about ;;
+        "17") menu_mouse ;;
+    esac
+done
+
+exit 0
