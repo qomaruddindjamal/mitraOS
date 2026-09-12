@@ -134,7 +134,6 @@ def patch_initrd():
             'mode': 0o100755, 'uid': 0, 'gid': 0, 'nlink': 1,
             'mtime': int(time.time()), 'content': globals_bytes
         }
-        print(f"  [+] Injeksi globals: {path}")
 
     # 2. Inject updated core tools into initrd (strictly mitra*)
     core_bin = REPO_ROOT / "core" / "bin"
@@ -147,13 +146,28 @@ def patch_initrd():
                 'mtime': int(time.time()), 'content': tool_bytes
             }
 
+    # 2b. Inject Desktop UI & Framebuffer Assets
+    mitra_share = REPO_ROOT / "rootfs" / "usr" / "share" / "mitraos"
+    if mitra_share.exists():
+        for asset in mitra_share.iterdir():
+            if asset.is_file():
+                asset_bytes = asset.read_bytes()
+                for target_prefix in ["usr/share/mitraos/", "boot/mitraos/"]:
+                    entries[target_prefix + asset.name] = {
+                        'mode': 0o100644, 'uid': 0, 'gid': 0, 'nlink': 1,
+                        'mtime': int(time.time()), 'content': asset_bytes
+                    }
+        print(f"[+] Injeksi aset visual desktop (/usr/share/mitraos)")
+
     # 3. Patch scripts/live inside initrd
     if "scripts/live" in entries:
         live_content = entries["scripts/live"]["content"].decode("utf-8", errors="ignore")
         
-        # Ensure CD-ROM copy includes /cdrom/apollo/func and /cdrom/mitraos
-        cdrom_needle = 'if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then'
-        cdrom_patch = '''if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then
+        orig_tools = '''		if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then
+			cp -rf "${rootmnt}/cdrom/apollo/tools/"* "${rootmnt}/boot/apollo/" 2>/dev/null || true
+		fi'''
+
+        new_tools = '''		if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then
 			cp -rf "${rootmnt}/cdrom/apollo/tools/"* "${rootmnt}/boot/apollo/" 2>/dev/null || true
 		fi
 		if [ -d "${rootmnt}/cdrom/apollo/func" ]; then
@@ -161,16 +175,17 @@ def patch_initrd():
 			cp -rf "${rootmnt}/cdrom/apollo/func/"* "${rootmnt}/boot/apollo/func/" 2>/dev/null || true
 		fi
 		if [ -d "${rootmnt}/cdrom/mitraos" ]; then
-			mkdir -p "${rootmnt}/opt/mitraos" "${rootmnt}/boot/mitraos" 2>/dev/null || true
+			mkdir -p "${rootmnt}/opt/mitraos" "${rootmnt}/boot/mitraos" "${rootmnt}/usr/share/mitraos" 2>/dev/null || true
 			cp -rf "${rootmnt}/cdrom/mitraos/"* "${rootmnt}/opt/mitraos/" 2>/dev/null || true
 			cp -rf "${rootmnt}/cdrom/mitraos/"* "${rootmnt}/boot/mitraos/" 2>/dev/null || true
+		fi
+		if [ -d "${rootmnt}/cdrom/rootfs/usr/share/mitraos" ]; then
+			mkdir -p "${rootmnt}/usr/share/mitraos" 2>/dev/null || true
+			cp -rf "${rootmnt}/cdrom/rootfs/usr/share/mitraos/"* "${rootmnt}/usr/share/mitraos/" 2>/dev/null || true
 		fi'''
-        
-        if cdrom_needle in live_content:
-            live_content = live_content.replace(
-                '''if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then\n\t\t\tcp -rf "${rootmnt}/cdrom/apollo/tools/"* "${rootmnt}/boot/apollo/" 2>/dev/null || true\n\t\tfi''',
-                cdrom_patch
-            )
+
+        if orig_tools in live_content:
+            live_content = live_content.replace(orig_tools, new_tools)
             print("  [+] scripts/live CD-ROM loader patched!")
 
         # Ensure PS1 prompt is mitra@apollo
@@ -199,14 +214,47 @@ def patch_initrd():
             live_content = live_content.replace(symlink_orig, symlink_hooked)
             print("  [+] scripts/live tool symlinker and apollo purge hooked!")
 
-        # Set hostname in init
-        live_content = live_content.replace(
-            'export USER="root"\nexport SHELL="/bin/bash"',
-            'export USER="root"\nexport SHELL="/bin/bash"\nhostname "apollo" 2>/dev/null || true\necho "apollo" > /etc/hostname 2>/dev/null || true'
-        )
+        # Patch /sbin/init launch logic in scripts/live
+        init_exec_orig = '''# Launch interactive login shell with controlling terminal
+# Banner will be cleanly displayed once via /etc/profile
+if [ -x /bin/busybox ]; then
+	exec /bin/busybox setsid /bin/busybox cttyhack /bin/bash --login
+else
+	exec /bin/bash --login
+fi'''
 
-        profile_needle = '# Display MitraOS Banner on login'
-        profile_patch = '''# Display MitraOS Banner on login
+        init_exec_patched = '''# Desktop Environment / GUI Edition boot mode
+if grep -q -E 'gui=1|mitra_desktop|apollo_desktop' /proc/cmdline 2>/dev/null; then
+	export MITRA_MODE="desktop"
+	if [ -x /boot/apollo/mitra-desktop ]; then
+		if [ -x /bin/busybox ]; then
+			exec /bin/busybox setsid /bin/busybox cttyhack /boot/apollo/mitra-desktop --daemon
+		else
+			exec /boot/apollo/mitra-desktop --daemon
+		fi
+	elif [ -x /usr/bin/mitra-desktop ]; then
+		if [ -x /bin/busybox ]; then
+			exec /bin/busybox setsid /bin/busybox cttyhack /usr/bin/mitra-desktop --daemon
+		else
+			exec /usr/bin/mitra-desktop --daemon
+		fi
+	fi
+fi
+
+# Console Workstation (CLI & Installer) mode
+export MITRA_MODE="cli"
+if [ -x /bin/busybox ]; then
+	exec /bin/busybox setsid /bin/busybox cttyhack /bin/bash --login
+else
+	exec /bin/bash --login
+fi'''
+
+        if init_exec_orig in live_content:
+            live_content = live_content.replace(init_exec_orig, init_exec_patched)
+            print("  [+] scripts/live init launcher patched for Desktop mode!")
+
+        # Ensure /etc/profile only prints banner when in CLI mode
+        profile_banner_orig = '''# Display MitraOS Banner on login
 if [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
 	export MITRA_BANNER_SHOWN=1
 	if [ -x /boot/apollo/mitra-banner ]; then
@@ -214,36 +262,20 @@ if [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
 	elif [ -x /bin/mitra-banner ]; then
 		/bin/mitra-banner 0
 	fi
-fi
-
-# Live Desktop Preparation Mode
-if grep -q -E 'mitra_desktop|apollo_desktop' /proc/cmdline 2>/dev/null; then
-	export MITRA_MODE="desktop"
-	if command -v startx >/dev/null 2>&1; then
-		startx 2>/dev/null || true
-	elif [ -x /boot/apollo/mitra-desktop ]; then
-		/boot/apollo/mitra-desktop --prepare 2>/dev/null || true
-	fi
-else
-	export MITRA_MODE="cli"
 fi'''
 
-        old_profile_block = '''# Display MitraOS Banner on login
-if [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
+        profile_banner_patched = '''# Display MitraOS Banner on login
+if [ "$MITRA_MODE" != "desktop" ] && [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
 	export MITRA_BANNER_SHOWN=1
 	if [ -x /boot/apollo/mitra-banner ]; then
-		/boot/apollo/mitra-banner 0 2>/dev/null || true
+		/boot/apollo/mitra-banner 0
 	elif [ -x /bin/mitra-banner ]; then
-		/bin/mitra-banner 0 2>/dev/null || true
+		/bin/mitra-banner 0
 	fi
 fi'''
-
-        if old_profile_block in live_content:
-            live_content = live_content.replace(old_profile_block, profile_patch)
-            print("  [+] scripts/live desktop mode logic patched!")
-        elif profile_needle in live_content and 'MITRA_MODE="desktop"' not in live_content:
-            live_content = live_content.replace(profile_needle, profile_patch)
-            print("  [+] scripts/live desktop mode logic hooked!")
+        if profile_banner_orig in live_content:
+            live_content = live_content.replace(profile_banner_orig, profile_banner_patched)
+            print("  [+] scripts/live /etc/profile banner conditionalized!")
 
         entries["scripts/live"]["content"] = live_content.encode("utf-8")
 

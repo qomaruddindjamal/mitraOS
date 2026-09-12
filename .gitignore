@@ -8,4 +8,6 @@ build/screen_thumb.bin
 build/*.png
 *.tmp
 *.log
+*.bin
+mitraos_*.png
 __pycache__/
