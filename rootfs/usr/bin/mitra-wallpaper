@@ -1,0 +1,220 @@
+#!/bin/bash
+# ==============================================================================
+# MitraOS Intelligent HD Wallpaper Engine & Resolution Switcher
+# Author : Qomaruddin Djamal & Citra Media Technology
+# Descr  : Deteksi otomatis resolusi layar (800x600 s/d 4K) & terapkan wallpaper HD
+# ==============================================================================
+
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+WP_DIR="/usr/share/mitraos/wallpapers"
+ALT_WP_DIR="/boot/mitraos/wallpapers"
+TARGET_ACTIVE="/usr/share/mitraos/wallpaper.jpg"
+
+# Pastikan folder wallpaper ditemukan
+if [ ! -d "$WP_DIR" ] && [ -d "$ALT_WP_DIR" ]; then
+    WP_DIR="$ALT_WP_DIR"
+fi
+
+get_screen_res() {
+    local res=""
+    # 1. Coba melalui xrandr
+    if command -v xrandr >/dev/null 2>&1; then
+        res=$(xrandr 2>/dev/null | grep -E '^\s*[0-9]+x[0-9]+' | grep '\*' | head -n 1 | awk '{print $1}')
+    fi
+    # 2. Coba melalui xdpyinfo
+    if [ -z "$res" ] && command -v xdpyinfo >/dev/null 2>&1; then
+        res=$(xdpyinfo 2>/dev/null | grep 'dimensions:' | head -n 1 | awk '{print $2}')
+    fi
+    # 3. Coba melalui framebuffer kernel /sys
+    if [ -z "$res" ] && [ -f /sys/class/graphics/fb0/virtual_size ]; then
+        res=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null | tr ',' 'x')
+    fi
+    # Fallback default
+    if [ -z "$res" ]; then
+        res="1024x768"
+    fi
+    echo "$res"
+}
+
+select_wallpaper_for_res() {
+    local res="$1"
+    local w="${res%x*}"
+    local h="${res#*x}"
+    
+    # Validasi angka
+    if ! [[ "$w" =~ ^[0-9]+$ ]] || ! [[ "$h" =~ ^[0-9]+$ ]]; then
+        w=1024
+        h=768
+    fi
+
+    local selected=""
+
+    if [ "$w" -ge 3000 ]; then
+        selected="mitra-wallpaper-4k.jpg"
+    elif [ "$w" -ge 2200 ]; then
+        if [ "$h" -ge 1550 ]; then
+            selected="mitra-wallpaper-1600p.jpg"
+        else
+            selected="mitra-wallpaper-2k.jpg"
+        fi
+    elif [ "$w" -ge 1700 ]; then
+        if [ "$h" -ge 1150 ]; then
+            selected="mitra-wallpaper-1200p.jpg"
+        else
+            selected="mitra-wallpaper-1080p.jpg"
+        fi
+    elif [ "$w" -ge 1300 ]; then
+        selected="mitra-wallpaper-1366x768.jpg"
+    elif [ "$w" -ge 1200 ]; then
+        if [ "$h" -ge 950 ]; then
+            selected="mitra-wallpaper-1280x1024.jpg"
+        else
+            selected="mitra-wallpaper-720p.jpg"
+        fi
+    elif [ "$w" -ge 950 ]; then
+        selected="mitra-wallpaper-1024x768.jpg"
+    else
+        selected="mitra-wallpaper-800x600.jpg"
+    fi
+
+    if [ -f "$WP_DIR/$selected" ]; then
+        echo "$WP_DIR/$selected"
+    else
+        echo "$TARGET_ACTIVE"
+    fi
+}
+
+apply_wallpaper() {
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        echo "[-] Berkas wallpaper tidak ditemukan: $file"
+        return 1
+    fi
+
+    # Update berkas aktif untuk sistem
+    cp -f "$file" "$TARGET_ACTIVE" 2>/dev/null || true
+
+    # Terapkan via feh jika server X aktif
+    if [ -n "$DISPLAY" ] && command -v feh >/dev/null 2>&1; then
+        feh --bg-fill "$file" 2>/dev/null || feh --bg-scale "$file" 2>/dev/null &
+    fi
+
+    # Refresh background JWM jika berjalan
+    if [ -n "$DISPLAY" ] && pidof jwm >/dev/null 2>&1; then
+        jwm -restart 2>/dev/null &
+    fi
+
+    echo "[+] Wallpaper aktif: $(basename "$file")"
+}
+
+show_list() {
+    local cur_res
+    cur_res=$(get_screen_res)
+    echo "=========================================================="
+    echo " MitraOS HD Wallpaper Suite (800x600 s/d 4K Ultra HD)    "
+    echo "=========================================================="
+    echo " Resolusi layar terdeteksi saat ini: $cur_res"
+    echo " Lokasi koleksi                     : $WP_DIR"
+    echo "----------------------------------------------------------"
+    printf "%-32s | %-12s | %s\n" "Nama Berkas" "Resolusi" "Status"
+    echo "----------------------------------------------------------"
+    for wp in "$WP_DIR"/*.jpg; do
+        [ -f "$wp" ] || continue
+        local bname
+        bname=$(basename "$wp")
+        local res_tag=""
+        case "$bname" in
+            *4k*)       res_tag="3840x2160 (4K 16:9)" ;;
+            *2k*)       res_tag="2560x1440 (2K 16:9)" ;;
+            *1600p*)    res_tag="2560x1600 (16:10)" ;;
+            *1080p*)    res_tag="1920x1080 (FHD 16:9)" ;;
+            *1200p*)    res_tag="1920x1200 (16:10)" ;;
+            *1366x768*) res_tag="1366x768  (16:9)" ;;
+            *720p*)     res_tag="1280x720  (HD 16:9)" ;;
+            *1280x1024*)res_tag="1280x1024 (5:4)" ;;
+            *1024x768*) res_tag="1024x768  (4:3)" ;;
+            *800x600*)  res_tag="800x600   (4:3)" ;;
+            *)          res_tag="Kustom" ;;
+        esac
+        printf "%-32s | %-16s |\n" "$bname" "$res_tag"
+    done
+    echo "=========================================================="
+}
+
+interactive_menu() {
+    local cur_res
+    cur_res=$(get_screen_res)
+    echo -e "\n\033[1;36m=== Pemilih Wallpaper Resmi MitraOS ===\033[0m"
+    echo "Resolusi Layar Saat Ini: $cur_res"
+    echo ""
+    echo " [1] Otomatis Deteksi Resolusi Layar (Disarankan)"
+    echo " [2] 3840x2160 (4K Ultra HD)"
+    echo " [3] 2560x1440 (2K QHD)"
+    echo " [4] 1920x1080 (Full HD 1080p)"
+    echo " [5] 1366x768  (HD Laptop)"
+    echo " [6] 1280x1024 (5:4 SXGA)"
+    echo " [7] 1024x768  (4:3 Standard Workstation)"
+    echo " [8] 800x600   (Low-RAM / Safe Mode)"
+    echo " [0] Batal / Keluar"
+    echo ""
+    read -p "Pilihan Anda [1-8]: " choice
+    case "$choice" in
+        1)
+            local wp
+            wp=$(select_wallpaper_for_res "$cur_res")
+            apply_wallpaper "$wp"
+            ;;
+        2) apply_wallpaper "$WP_DIR/mitra-wallpaper-4k.jpg" ;;
+        3) apply_wallpaper "$WP_DIR/mitra-wallpaper-2k.jpg" ;;
+        4) apply_wallpaper "$WP_DIR/mitra-wallpaper-1080p.jpg" ;;
+        5) apply_wallpaper "$WP_DIR/mitra-wallpaper-1366x768.jpg" ;;
+        6) apply_wallpaper "$WP_DIR/mitra-wallpaper-1280x1024.jpg" ;;
+        7) apply_wallpaper "$WP_DIR/mitra-wallpaper-1024x768.jpg" ;;
+        8) apply_wallpaper "$WP_DIR/mitra-wallpaper-800x600.jpg" ;;
+        *) echo "Dibatalkan." ;;
+    esac
+}
+
+# --- Main Entry Point ---
+case "$1" in
+    --auto|-a|"")
+        CUR_RES=$(get_screen_res)
+        BEST_WP=$(select_wallpaper_for_res "$CUR_RES")
+        apply_wallpaper "$BEST_WP"
+        ;;
+    --list|-l)
+        show_list
+        ;;
+    --set|-s)
+        shift
+        REQ="$1"
+        if [ -f "$REQ" ]; then
+            apply_wallpaper "$REQ"
+        elif [ -f "$WP_DIR/$REQ" ]; then
+            apply_wallpaper "$WP_DIR/$REQ"
+        elif [ -f "$WP_DIR/mitra-wallpaper-$REQ.jpg" ]; then
+            apply_wallpaper "$WP_DIR/mitra-wallpaper-$REQ.jpg"
+        else
+            echo "[-] Wallpaper '$REQ' tidak ditemukan!"
+            exit 1
+        fi
+        ;;
+    --menu|-m)
+        interactive_menu
+        ;;
+    --help|-h)
+        echo "Penggunaan: mitra-wallpaper [OPSI]"
+        echo "  --auto, -a         Deteksi resolusi otomatis dan terapkan wallpaper HD terbaik (default)"
+        echo "  --list, -l         Daftar semua wallpaper resolusi yang tersedia"
+        echo "  --set, -s <nama>   Terapkan wallpaper secara manual (contoh: 4k, 1080p, 1024x768)"
+        echo "  --menu, -m         Buka menu interaktif pemilih wallpaper"
+        ;;
+    *)
+        if [ -f "$1" ]; then
+            apply_wallpaper "$1"
+        else
+            echo "Opsi tidak dikenal: $1 (gunakan --help)"
+            exit 1
+        fi
+        ;;
+esac

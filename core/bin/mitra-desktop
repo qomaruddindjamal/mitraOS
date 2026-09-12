@@ -3,6 +3,16 @@ export DISPLAY=:0
 export HOME=/root
 export USER=root
 
+# Delegate to mitra-wallpaper if requested
+if [ "$1" = "--wallpaper" ]; then
+    shift
+    if [ -x /usr/bin/mitra-wallpaper ]; then
+        exec /usr/bin/mitra-wallpaper "$@"
+    elif command -v mitra-wallpaper >/dev/null 2>&1; then
+        exec mitra-wallpaper "$@"
+    fi
+fi
+
 # If Xorg or xinit not installed yet, find and unpack runtime from CD-ROM
 if [ ! -x /usr/bin/xinit ] || [ ! -x /usr/lib/xorg/Xorg ]; then
     echo "Mempersiapkan runtime desktop MitraOS..." > /dev/tty1
