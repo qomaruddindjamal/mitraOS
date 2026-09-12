@@ -9,9 +9,3 @@ build/*.png
 *.tmp
 *.log
 __pycache__/
-
-# Large binary blobs & compiled OS images (Build outputs / Kernel images)
-*.img
-boot/vmlinuz
-boot/kernel/vmlinuz
-rootfs/usr/bin/cloudflared
