@@ -29,16 +29,26 @@ fi
 insmod /lib/modules/6.1.0-52-amd64/kernel/drivers/input/evdev.ko 2>/dev/null || modprobe evdev 2>/dev/null || true
 modprobe hyperv_keyboard 2>/dev/null || true
 modprobe hid_hyperv 2>/dev/null || true
+modprobe mousedev 2>/dev/null || true
+
+# Ensure essential /dev/input device nodes exist
+mkdir -p /dev/input
+[ -e /dev/input/mice ] || mknod -m 666 /dev/input/mice c 13 63 2>/dev/null || true
+[ -e /dev/input/mouse0 ] || mknod -m 666 /dev/input/mouse0 c 13 32 2>/dev/null || true
+for i in 0 1 2 3 4 5; do
+    [ -e "/dev/input/event$i" ] || mknod -m 666 "/dev/input/event$i" c 13 $((64 + i)) 2>/dev/null || true
+done
 
 # Dynamic input device symlinks for Xorg
-KB_DEV=$(grep -A 4 -i "keyboard" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+KB_DEV=$(grep -E -A 8 -i "(keyboard|at translated)" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
 if [ -n "$KB_DEV" ] && [ -e "/dev/input/$KB_DEV" ]; then
     ln -sf "/dev/input/$KB_DEV" /dev/input/hyperv_keyboard
 else
     ln -sf /dev/input/event0 /dev/input/hyperv_keyboard
 fi
 
-MOUSE_DEV=$(grep -A 4 -i "mouse" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+# Prioritize absolute synthetic VM pointers (Hyper-V Vmbus, QEMU Tablet, VirtualBox), then any mouse/touchpad
+MOUSE_DEV=$(grep -E -A 8 -i "(microsoft vmbus|vmbus|tablet|touchpad|mouse)" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
 if [ -n "$MOUSE_DEV" ] && [ -e "/dev/input/$MOUSE_DEV" ]; then
     ln -sf "/dev/input/$MOUSE_DEV" /dev/input/hyperv_mouse
 else

@@ -1,6 +1,9 @@
 #!/bin/sh
 xset s off -dpms 2>/dev/null &
 
+# Standard left pointer arrow with tip hotspot (0, 0) for seamless host cursor integration
+xsetroot -cursor_name left_ptr 2>/dev/null &
+
 # Host pointer synchronization (1:1 precision, zero acceleration drift)
 xset m 1/1 0 2>/dev/null &
 xset r rate 250 30 2>/dev/null &

@@ -208,7 +208,13 @@ def patch_initrd():
 	mknod -m 660 "${rootmnt}/dev/fb0" c 29 0 2>/dev/null || true
 	mkdir -p "${rootmnt}/dev/input" 2>/dev/null || true
 	mknod -m 666 "${rootmnt}/dev/input/mice" c 13 63 2>/dev/null || true
-	mknod -m 666 "${rootmnt}/dev/input/mouse0" c 13 32 2>/dev/null || true'''
+	mknod -m 666 "${rootmnt}/dev/input/mouse0" c 13 32 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event0" c 13 64 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event1" c 13 65 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event2" c 13 66 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event3" c 13 67 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event4" c 13 68 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/event5" c 13 69 2>/dev/null || true'''
             if cp_target in live_content:
                 live_content = live_content.replace(cp_target, dev_patch)
                 print("  [+] scripts/live device nodes patch applied!")
@@ -226,9 +232,9 @@ def patch_initrd():
         new_desktop_block = '''if grep -q -E 'gui=1|mitra_desktop|apollo_desktop' /proc/cmdline 2>/dev/null; then
 	export MITRA_MODE="desktop"
 	# Prepare dynamic input device symlinks for Xorg
-	KB_DEV=$(grep -A 4 -i "keyboard" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+	KB_DEV=$(grep -E -A 8 -i "(keyboard|at translated)" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
 	[ -n "$KB_DEV" ] && ln -sf "/dev/input/$KB_DEV" /dev/input/hyperv_keyboard || ln -sf /dev/input/event0 /dev/input/hyperv_keyboard
-	MOUSE_DEV=$(grep -A 4 -i "mouse" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+	MOUSE_DEV=$(grep -E -A 8 -i "(microsoft vmbus|vmbus|tablet|touchpad|mouse)" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
 	[ -n "$MOUSE_DEV" ] && ln -sf "/dev/input/$MOUSE_DEV" /dev/input/hyperv_mouse || ln -sf /dev/input/event1 /dev/input/hyperv_mouse
 	chmod 666 /dev/input/* 2>/dev/null || true
 	mkdir -p /tmp/.X11-unix /var/log

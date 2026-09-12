@@ -98,13 +98,15 @@ def main():
         'usr/lib/xorg/modules/drivers/modesetting_drv.so',
         'usr/lib/xorg/modules/input/kbd_drv.so',
         'usr/lib/xorg/modules/input/mouse_drv.so',
+        'usr/lib/xorg/modules/input/evdev_drv.so',
         'usr/lib/xorg/modules/libwfb.so',
         'usr/lib/xorg/modules/libshadow.so',
         'usr/lib/xorg/modules/libshadowfb.so',
         'usr/lib/xorg/modules/libfbdevhw.so',
         'usr/lib/xorg/modules/libglx.so',
         'usr/lib/xorg/modules/libexa.so',
-        'usr/lib/x86_64-linux-gnu/libevdev.so.2'
+        'usr/lib/x86_64-linux-gnu/libevdev.so.2',
+        'usr/lib/x86_64-linux-gnu/libmtdev.so.1'
     ]
 
     required_files = set()
