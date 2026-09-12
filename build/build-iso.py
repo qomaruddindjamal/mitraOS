@@ -75,6 +75,9 @@ def prepare_staging(staging_dir, config):
     shutil.copytree(REPO_ROOT / "rootfs", staging / "rootfs", dirs_exist_ok=True)
     shutil.copytree(REPO_ROOT / "assets", staging / "assets", dirs_exist_ok=True)
     shutil.copytree(REPO_ROOT / "packages", staging / "packages", dirs_exist_ok=True)
+    x11_src = REPO_ROOT / "packages" / "x11_mitra_desktop.tar.gz"
+    if x11_src.exists():
+        shutil.copy2(x11_src, staging / "x11.tgz")
 
     # 5. Apollo compatibility tree (for library resolution & branding)
     apollo_dest = staging / "apollo"

@@ -106,7 +106,7 @@ def patch_initrd():
     if purged_apollo:
         print(f"[+] Dihapus {len(purged_apollo)} perintah apollo lama dari initrd.")
 
-    # Injeksi hostname & hosts (Apollo sebagai Kode OS v1)
+    # Injeksi hostname & hosts
     entries["etc/hostname"] = {
         'mode': 0o100644, 'uid': 0, 'gid': 0, 'nlink': 1,
         'mtime': int(time.time()), 'content': b'apollo\n'
@@ -159,123 +159,96 @@ def patch_initrd():
                     }
         print(f"[+] Injeksi aset visual desktop (/usr/share/mitraos)")
 
+    # 2c. Inject Rootfs Configs (.jwmrc, system.jwmrc, xinitrc, xorg.conf)
+    rootfs_dir = REPO_ROOT / "rootfs"
+    for r_file in rootfs_dir.rglob("*"):
+        if r_file.is_file():
+            rel_path = r_file.relative_to(rootfs_dir).as_posix()
+            entries[rel_path] = {
+                'mode': 0o100755 if 'xinitrc' in rel_path or 'bin/' in rel_path else 0o100644,
+                'uid': 0, 'gid': 0, 'nlink': 1,
+                'mtime': int(time.time()),
+                'content': r_file.read_bytes()
+            }
+    print(f"[+] Injeksi konfigurasi desktop rootfs (.jwmrc, xinitrc, xorg.conf)")
+
     # 3. Patch scripts/live inside initrd
     if "scripts/live" in entries:
         live_content = entries["scripts/live"]["content"].decode("utf-8", errors="ignore")
         
-        orig_tools = '''		if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then
-			cp -rf "${rootmnt}/cdrom/apollo/tools/"* "${rootmnt}/boot/apollo/" 2>/dev/null || true
-		fi'''
+        # Inject CD-ROM runtime loader (x11_mitra_desktop.tar.gz and rootfs overlay)
+        if "x11_mitra_desktop.tar.gz" not in live_content:
+            target_marker = 'if [ -d "${rootmnt}/cdrom/mitraos" ]; then'
+            if target_marker in live_content:
+                x11_patch = '''		X11_PKG=$(find "${rootmnt}/cdrom" -iname "*x11*" 2>/dev/null | grep -E '\.(tar\.gz|tgz|gz)$' | head -n 1)
+		if [ -n "$X11_PKG" ] && [ -f "$X11_PKG" ]; then
+			echo "  [+] Memuat runtime desktop MitraOS ($X11_PKG)..."
+			tar -xzf "$X11_PKG" -C "${rootmnt}/" 2>/dev/null || true
+			chroot "${rootmnt}" ldconfig 2>/dev/null || true
+		fi
+		if [ -d "${rootmnt}/cdrom/rootfs" ]; then
+			cp -rf "${rootmnt}/cdrom/rootfs/"* "${rootmnt}/" 2>/dev/null || true
+		fi
+'''
+                live_content = live_content.replace(target_marker, x11_patch + target_marker)
+                print("  [+] scripts/live X11 runtime loader hooked!")
 
-        new_tools = '''		if [ -d "${rootmnt}/cdrom/apollo/tools" ]; then
-			cp -rf "${rootmnt}/cdrom/apollo/tools/"* "${rootmnt}/boot/apollo/" 2>/dev/null || true
-		fi
-		if [ -d "${rootmnt}/cdrom/apollo/func" ]; then
-			mkdir -p "${rootmnt}/boot/apollo/func" 2>/dev/null || true
-			cp -rf "${rootmnt}/cdrom/apollo/func/"* "${rootmnt}/boot/apollo/func/" 2>/dev/null || true
-		fi
-		if [ -d "${rootmnt}/cdrom/mitraos" ]; then
-			mkdir -p "${rootmnt}/opt/mitraos" "${rootmnt}/boot/mitraos" "${rootmnt}/usr/share/mitraos" 2>/dev/null || true
-			cp -rf "${rootmnt}/cdrom/mitraos/"* "${rootmnt}/opt/mitraos/" 2>/dev/null || true
-			cp -rf "${rootmnt}/cdrom/mitraos/"* "${rootmnt}/boot/mitraos/" 2>/dev/null || true
-		fi
-		if [ -d "${rootmnt}/cdrom/rootfs/usr/share/mitraos" ]; then
-			mkdir -p "${rootmnt}/usr/share/mitraos" 2>/dev/null || true
-			cp -rf "${rootmnt}/cdrom/rootfs/usr/share/mitraos/"* "${rootmnt}/usr/share/mitraos/" 2>/dev/null || true
-		fi'''
+        # Ensure essential device nodes exist in ${rootmnt}/dev for run-init and init
+        if "mknod -m 600" not in live_content:
+            cp_target = 'cp -a /bin /sbin /usr /lib* /etc /boot "${rootmnt}/" 2>/dev/null || true'
+            dev_patch = '''cp -a /bin /sbin /usr /lib* /etc /boot "${rootmnt}/" 2>/dev/null || true
+	mkdir -p "${rootmnt}/dev" 2>/dev/null || true
+	cp -a /dev/* "${rootmnt}/dev/" 2>/dev/null || true
+	mknod -m 600 "${rootmnt}/dev/console" c 5 1 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/null" c 1 3 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/zero" c 1 5 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/ptmx" c 5 2 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/tty" c 5 0 2>/dev/null || true
+	mknod -m 620 "${rootmnt}/dev/tty1" c 4 1 2>/dev/null || true
+	mknod -m 660 "${rootmnt}/dev/fb0" c 29 0 2>/dev/null || true'''
+            if cp_target in live_content:
+                live_content = live_content.replace(cp_target, dev_patch)
+                print("  [+] scripts/live device nodes patch applied!")
 
-        if orig_tools in live_content:
-            live_content = live_content.replace(orig_tools, new_tools)
-            print("  [+] scripts/live CD-ROM loader patched!")
+        # Also ensure dev/console before run-init
+        end_marker = 'chmod 755 "${rootmnt}/sbin/init"'
+        if end_marker in live_content and 'mknod -m 600 "${rootmnt}/dev/console"' not in live_content:
+            live_content = live_content.replace(end_marker, end_marker + '\n\tmknod -m 600 "${rootmnt}/dev/console" c 5 1 2>/dev/null || true\n\tcp -a /dev/* "${rootmnt}/dev/" 2>/dev/null || true')
 
         # Ensure PS1 prompt is mitra@apollo
         live_content = live_content.replace("mitra@mitraOS", "mitra@apollo")
 
-        # Hook tool symlinker to purge apollo commands and set hostname
-        symlink_orig = '''for tool in "${rootmnt}/boot/apollo"/*; do
-		[ -f "$tool" ] || continue
-		btool="$(basename "$tool")"'''
-        symlink_hooked = '''# Purge any legacy apollo executables
-	rm -f "${rootmnt}/bin/apollo"* "${rootmnt}/usr/bin/apollo"* "${rootmnt}/boot/apollo/apollo"* 2>/dev/null || true
-
-	# Set system hostname to apollo (OS Codename)
-	echo "apollo" > "${rootmnt}/etc/hostname"
-	hostname "apollo" 2>/dev/null || true
-
-	# Symlink all Mitra tools from /boot/apollo to /bin and /usr/bin without duplication
-	for tool in "${rootmnt}/boot/apollo"/*; do
-		[ -f "$tool" ] || continue
-		btool="$(basename "$tool")"
-		case "$btool" in
-			apollo*) continue ;; # Skip legacy apollo commands
-		esac'''
-
-        if symlink_orig in live_content:
-            live_content = live_content.replace(symlink_orig, symlink_hooked)
-            print("  [+] scripts/live tool symlinker and apollo purge hooked!")
-
-        # Patch /sbin/init launch logic in scripts/live
-        init_exec_orig = '''# Launch interactive login shell with controlling terminal
-# Banner will be cleanly displayed once via /etc/profile
-if [ -x /bin/busybox ]; then
-	exec /bin/busybox setsid /bin/busybox cttyhack /bin/bash --login
-else
-	exec /bin/bash --login
-fi'''
-
-        init_exec_patched = '''# Desktop Environment / GUI Edition boot mode
-if grep -q -E 'gui=1|mitra_desktop|apollo_desktop' /proc/cmdline 2>/dev/null; then
+        # Patch /sbin/init launch logic in scripts/live for Desktop mode
+        desktop_marker = 'if grep -q -E \'gui=1|mitra_desktop|apollo_desktop\' /proc/cmdline 2>/dev/null; then'
+        new_desktop_block = '''if grep -q -E 'gui=1|mitra_desktop|apollo_desktop' /proc/cmdline 2>/dev/null; then
 	export MITRA_MODE="desktop"
+	# Prepare dynamic input device symlinks for Xorg
+	KB_DEV=$(grep -A 4 -i "keyboard" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+	[ -n "$KB_DEV" ] && ln -sf "/dev/input/$KB_DEV" /dev/input/hyperv_keyboard || ln -sf /dev/input/event0 /dev/input/hyperv_keyboard
+	MOUSE_DEV=$(grep -A 4 -i "mouse" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+	[ -n "$MOUSE_DEV" ] && ln -sf "/dev/input/$MOUSE_DEV" /dev/input/hyperv_mouse || ln -sf /dev/input/event1 /dev/input/hyperv_mouse
+	chmod 666 /dev/input/* 2>/dev/null || true
+	mkdir -p /tmp/.X11-unix /var/log
+	chmod 1777 /tmp/.X11-unix
 	if [ -x /boot/apollo/mitra-desktop ]; then
-		if [ -x /bin/busybox ]; then
-			exec /bin/busybox setsid /bin/busybox cttyhack /boot/apollo/mitra-desktop --daemon
-		else
-			exec /boot/apollo/mitra-desktop --daemon
-		fi
+		exec /boot/apollo/mitra-desktop --daemon
 	elif [ -x /usr/bin/mitra-desktop ]; then
-		if [ -x /bin/busybox ]; then
-			exec /bin/busybox setsid /bin/busybox cttyhack /usr/bin/mitra-desktop --daemon
-		else
-			exec /usr/bin/mitra-desktop --daemon
-		fi
-	fi
-fi
-
-# Console Workstation (CLI & Installer) mode
-export MITRA_MODE="cli"
-if [ -x /bin/busybox ]; then
-	exec /bin/busybox setsid /bin/busybox cttyhack /bin/bash --login
-else
-	exec /bin/bash --login
-fi'''
-
-        if init_exec_orig in live_content:
-            live_content = live_content.replace(init_exec_orig, init_exec_patched)
-            print("  [+] scripts/live init launcher patched for Desktop mode!")
-
-        # Ensure /etc/profile only prints banner when in CLI mode
-        profile_banner_orig = '''# Display MitraOS Banner on login
-if [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
-	export MITRA_BANNER_SHOWN=1
-	if [ -x /boot/apollo/mitra-banner ]; then
-		/boot/apollo/mitra-banner 0
-	elif [ -x /bin/mitra-banner ]; then
-		/bin/mitra-banner 0
+		exec /usr/bin/mitra-desktop --daemon
 	fi
 fi'''
-
-        profile_banner_patched = '''# Display MitraOS Banner on login
-if [ "$MITRA_MODE" != "desktop" ] && [ -z "$MITRA_BANNER_SHOWN" ] && [ -t 1 ]; then
-	export MITRA_BANNER_SHOWN=1
-	if [ -x /boot/apollo/mitra-banner ]; then
-		/boot/apollo/mitra-banner 0
-	elif [ -x /bin/mitra-banner ]; then
-		/bin/mitra-banner 0
-	fi
-fi'''
-        if profile_banner_orig in live_content:
-            live_content = live_content.replace(profile_banner_orig, profile_banner_patched)
-            print("  [+] scripts/live /etc/profile banner conditionalized!")
+        if desktop_marker in live_content:
+            idx = live_content.find(desktop_marker)
+            # find matching fi
+            end_idx = live_content.find('\nfi\n', idx)
+            if end_idx != -1:
+                # also check inner fi
+                inner_fi = live_content.find('\n\tfi\nfi', idx)
+                if inner_fi != -1:
+                    end_idx = inner_fi + 7
+                else:
+                    end_idx = end_idx + 4
+                live_content = live_content[:idx] + new_desktop_block + live_content[end_idx:]
+                print("  [+] scripts/live desktop launcher updated with input detection!")
 
         entries["scripts/live"]["content"] = live_content.encode("utf-8")
 
@@ -293,7 +266,13 @@ fi'''
     out_initrd = REPO_ROOT / "boot" / "kernel" / "initrd.img"
     with open(out_initrd, "wb") as f:
         f.write(compressed)
-    print(f"[+] initrd berhasil diperbarui: {out_initrd}")
+    
+    # Also sync boot/initrd.img
+    sync_initrd = REPO_ROOT / "boot" / "initrd.img"
+    with open(sync_initrd, "wb") as f:
+        f.write(compressed)
+        
+    print(f"[+] initrd berhasil diperbarui di kedua lokasi: {out_initrd} & {sync_initrd}")
 
 if __name__ == "__main__":
     patch_initrd()

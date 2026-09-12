@@ -12,5 +12,6 @@ build/*.png
 mitraos_*.png
 *.ext4
 *.tar.gz
+!packages/x11_mitra_desktop.tar.gz
 scratch/
 __pycache__/

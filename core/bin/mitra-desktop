@@ -1,16 +1,63 @@
 #!/bin/bash
 export DISPLAY=:0
 export HOME=/root
+export USER=root
 
-# Load evdev module for absolute Hyper-V mouse pointer synchronization
-insmod /lib/modules/6.1.0-52-amd64/kernel/drivers/input/evdev.ko 2>/dev/null || true
+# If Xorg or xinit not installed yet, find and unpack runtime from CD-ROM
+if [ ! -x /usr/bin/xinit ] || [ ! -x /usr/lib/xorg/Xorg ]; then
+    echo "Mempersiapkan runtime desktop MitraOS..." > /dev/tty1
+    X11_PKG=$(find /cdrom /mnt /media /boot -iname "*x11*" 2>/dev/null | grep -E '\.(tar\.gz|tgz|gz)$' | head -n 1)
+    if [ -n "$X11_PKG" ] && [ -f "$X11_PKG" ]; then
+        echo "Memuat runtime desktop dari $X11_PKG..." > /dev/tty1
+        tar -xzf "$X11_PKG" -C / 2>/dev/null || true
+        chmod 755 /usr/bin/* /usr/lib/xorg/Xorg /usr/bin/jwm /usr/bin/xinit /usr/bin/xterm /usr/bin/xkbcomp 2>/dev/null || true
+        ldconfig 2>/dev/null || true
+    fi
+fi
 
-# Permissions
+# Load evdev and input modules if available
+insmod /lib/modules/6.1.0-52-amd64/kernel/drivers/input/evdev.ko 2>/dev/null || modprobe evdev 2>/dev/null || true
+modprobe hyperv_keyboard 2>/dev/null || true
+modprobe hid_hyperv 2>/dev/null || true
+
+# Dynamic input device symlinks for Xorg
+KB_DEV=$(grep -A 4 -i "keyboard" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+if [ -n "$KB_DEV" ] && [ -e "/dev/input/$KB_DEV" ]; then
+    ln -sf "/dev/input/$KB_DEV" /dev/input/hyperv_keyboard
+else
+    ln -sf /dev/input/event0 /dev/input/hyperv_keyboard
+fi
+
+MOUSE_DEV=$(grep -A 4 -i "mouse" /proc/bus/input/devices 2>/dev/null | grep -o 'event[0-9]*' | head -n 1)
+if [ -n "$MOUSE_DEV" ] && [ -e "/dev/input/$MOUSE_DEV" ]; then
+    ln -sf "/dev/input/$MOUSE_DEV" /dev/input/hyperv_mouse
+else
+    ln -sf /dev/input/event1 /dev/input/hyperv_mouse
+fi
+
+# Permissions & directories
 chmod 666 /dev/input/* 2>/dev/null || true
-mkdir -p /tmp/.X11-unix
+mkdir -p /tmp/.X11-unix /var/log
 chmod 1777 /tmp/.X11-unix
 
+# Setup xinitrc and permissions
+chmod 755 /etc/X11/xinit/xinitrc 2>/dev/null || true
+cp -f /etc/X11/xinit/xinitrc /root/.xinitrc 2>/dev/null || true
+chmod 755 /root/.xinitrc 2>/dev/null || true
+
+# Ensure Xorg and xinit are in PATH
+export PATH="/usr/bin:/usr/lib/xorg:/bin:/sbin:/usr/sbin:$PATH"
+
 while true; do
-    xinit /etc/X11/xinit/xinitrc -- /usr/lib/xorg/Xorg :0 vt1 -keeptty > /var/log/xorg.log 2>&1
+    if [ -x /usr/bin/xinit ] && [ -x /usr/lib/xorg/Xorg ]; then
+        xinit /etc/X11/xinit/xinitrc -- /usr/lib/xorg/Xorg :0 vt1 -keeptty > /var/log/xorg.log 2>&1
+        # If xinit exits, display tail of xorg.log for diagnosis
+        tail -n 15 /var/log/xorg.log > /dev/tty1 2>/dev/null || true
+    elif [ -x /usr/bin/startx ]; then
+        startx > /var/log/xorg.log 2>&1
+        tail -n 15 /var/log/xorg.log > /dev/tty1 2>/dev/null || true
+    else
+        echo "Error: Xorg or xinit not found. Retrying..." > /dev/tty1
+    fi
     sleep 1
 done
