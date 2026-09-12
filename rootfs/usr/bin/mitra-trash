@@ -1,0 +1,38 @@
+#!/bin/bash
+# MitraOS Trash / Sampah Manager
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+TRASH_DIR="/root/.local/share/Trash/files"
+TRASH_INFO="/root/.local/share/Trash/info"
+mkdir -p "$TRASH_DIR" "$TRASH_INFO"
+
+ACTION="$1"
+
+case "$ACTION" in
+    open)
+        exec /usr/bin/mitra-explorer "$TRASH_DIR"
+        ;;
+    empty)
+        COUNT=$(find "$TRASH_DIR" -mindepth 1 | wc -l)
+        if [ "$COUNT" -eq 0 ]; then
+            whiptail --title "Tempat Sampah (Trash)" --msgbox "Tempat sampah saat ini sudah bersih dan kosong (0 item)." 10 55
+        else
+            if whiptail --title "Kosongkan Sampah (Empty Trash)" --yesno "Apakah Anda yakin ingin menghapus secara permanen semua isi tempat sampah?\n\nJumlah item: $COUNT berkas/folder." 12 60; then
+                rm -rf "$TRASH_DIR"/* "$TRASH_INFO"/* 2>/dev/null
+                whiptail --title "Sukses" --msgbox "Seluruh isi tempat sampah berhasil dikosongkan secara permanen!" 10 55
+            fi
+        fi
+        ;;
+    status)
+        SIZE=$(du -sh "$TRASH_DIR" 2>/dev/null | cut -f1)
+        COUNT=$(find "$TRASH_DIR" -mindepth 1 | wc -l)
+        whiptail --title "Status Tempat Sampah" \
+            --msgbox "Lokasi Berkas : $TRASH_DIR\nPenggunaan Disk : ${SIZE:-0}\nJumlah Berkas   : $COUNT item\nStatus           : Siap" 13 55
+        ;;
+    cleaner)
+        /usr/bin/mitra-terminal -title "MitraOS System Cleaner" -geometry 90x25 -e /boot/apollo/mitra-cleaner
+        ;;
+    *)
+        exec /usr/bin/mitra-explorer "$TRASH_DIR"
+        ;;
+esac

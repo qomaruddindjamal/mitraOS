@@ -1,0 +1,11 @@
+#!/bin/bash
+export DISPLAY="${DISPLAY:-:0}"
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+# Display a clean terminal calendar popup
+xterm -title "Kalender MitraOS" -geometry 30x12 -bg "#0d1117" -fg "#00f2fe" -fa "DejaVu Sans Mono" -fs 11 -e bash -c '
+cal
+echo ""
+read -n 1 -s -r -p "Tekan sembarang tombol untuk menutup..."
+'
+

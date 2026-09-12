@@ -1,0 +1,9 @@
+#!/bin/bash
+DEF_IF=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n 1)
+[ -z "$DEF_IF" ] && DEF_IF=$(ip -o link show up | grep -v ': lo:' | awk -F': ' '{print $2}' | head -n 1)
+
+if echo "$DEF_IF" | grep -qE '^(wl|wifi)'; then
+    cp /usr/share/mitraos/net_wifi.png /usr/share/mitraos/net_status.png
+else
+    cp /usr/share/mitraos/net_lan.png /usr/share/mitraos/net_status.png
+fi

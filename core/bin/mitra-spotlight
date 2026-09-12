@@ -1,0 +1,24 @@
+#!/bin/bash
+CMD=$(/boot/apollo/whiptail --title "Spotlight Search" --inputbox "Search applications, files, or enter command to run:" 10 65 "mitra" 3>&1 1>&2 2>&3)
+if [ $? -eq 0 ] && [ -n "$CMD" ]; then
+    case "$CMD" in
+        "terminal"|"term"|"bash")
+            DISPLAY=:0 /usr/bin/mitra-terminal &
+            ;;
+        "apps"|"software")
+            DISPLAY=:0 /usr/bin/mitra-terminal -e /boot/apollo/mitra-apps &
+            ;;
+        "config"|"settings")
+            DISPLAY=:0 /usr/bin/mitra-terminal -e /boot/apollo/mitra-config &
+            ;;
+        "top"|"monitor")
+            DISPLAY=:0 /usr/bin/mitra-terminal -e top &
+            ;;
+        "mitra"|"control")
+            DISPLAY=:0 /usr/bin/mitra-terminal -e /boot/apollo/mitra &
+            ;;
+        *)
+            DISPLAY=:0 /usr/bin/mitra-terminal -e $CMD &
+            ;;
+    esac
+fi

@@ -4,45 +4,20 @@
 	# Apollo OS - Boot Behavior & Autostart Manager
 	#//////////////////////////////////////////////////////////////////
 
-	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-	# Load Globals with broad discovery
-	for _g in \
-		"$_DIR/../lib/mitra-globals" \
-		"$_DIR/mitra-globals" \
-		"$_DIR/func/mitra-globals" \
-		"$_DIR/func/apollo-globals" \
-		"/boot/apollo/func/mitra-globals" \
-		"/boot/apollo/func/apollo-globals" \
-		"/boot/apollo/mitra-globals" \
-		"/boot/mitraos/func/mitra-globals" \
-		"/opt/mitraos/lib/mitra-globals" \
-		"/cdrom/mitraos/lib/mitra-globals" \
-		"/cdrom/apollo/func/apollo-globals" \
-		"/cdrom/apollo/tools/mitra-globals" \
-		"/bin/mitra-globals" \
-		"/usr/bin/mitra-globals"; do
-		if [[ -f "$_g" ]]; then
-			. "$_g" 2>/dev/null || true
-			break
-		fi
-	done
-
-	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
-		G_CHECK_ROOT_USER() { :; }
-	fi
-	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
-		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
-[$1] $2
-"; }
+	if [[ -f '/boot/apollo/func/apollo-globals' ]]; then
+		. /boot/apollo/func/apollo-globals
+	else
+		echo "Error: /boot/apollo/func/apollo-globals not found."
+		exit 1
 	fi
 
-	G_PROGRAM_NAME='MitraOS - Autostart'
+	G_PROGRAM_NAME='Apollo OS - Autostart'
 	G_CHECK_ROOT_USER "$@"
 
-	CHOICE=$($TUI_TOOL --title "MitraOS - Boot & Autostart" \
+	CHOICE=$($TUI_TOOL --title "Apollo OS - Boot & Autostart" \
 		--menu "Select default login / boot target:" 15 65 5 \
 		"1" "Console: Auto-login as root" \
-		"2" "Console: Auto-login as mitra" \
+		"2" "Console: Auto-login as apollo" \
 		"3" "Console: Require manual login (Default)" \
 		"4" "Desktop: Auto-login GUI (if desktop installed)" \
 		"0" "Back" \
@@ -60,17 +35,17 @@ EOF
 			G_WHIP_MSG "Autostart" "Console auto-login as root configured."
 			;;
 		2)
-			if id -u mitra >/dev/null 2>&1; then
+			if id -u apollo >/dev/null 2>&1; then
 				mkdir -p /etc/systemd/system/getty@tty1.service.d
 				cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin mitra --noclear %I $TERM
+ExecStart=-/sbin/agetty --autologin apollo --noclear %I $TERM
 EOF
 				systemctl daemon-reload
-				G_WHIP_MSG "Autostart" "Console auto-login as mitra configured."
+				G_WHIP_MSG "Autostart" "Console auto-login as apollo configured."
 			else
-				G_WHIP_MSG "Error" "User 'mitra' does not exist."
+				G_WHIP_MSG "Error" "User 'apollo' does not exist."
 			fi
 			;;
 		3)

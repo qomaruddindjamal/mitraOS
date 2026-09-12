@@ -1,0 +1,63 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Boot Behavior & Autostart Manager
+	#//////////////////////////////////////////////////////////////////
+
+	if [[ -f '/boot/apollo/func/apollo-globals' ]]; then
+		. /boot/apollo/func/apollo-globals
+	else
+		echo "Error: /boot/apollo/func/apollo-globals not found."
+		exit 1
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Autostart'
+	G_CHECK_ROOT_USER "$@"
+
+	CHOICE=$($TUI_TOOL --title "Apollo OS - Boot & Autostart" \
+		--menu "Select default login / boot target:" 15 65 5 \
+		"1" "Console: Auto-login as root" \
+		"2" "Console: Auto-login as apollo" \
+		"3" "Console: Require manual login (Default)" \
+		"4" "Desktop: Auto-login GUI (if desktop installed)" \
+		"0" "Back" \
+		3>&1 1>&2 2>&3)
+
+	case $CHOICE in
+		1)
+			mkdir -p /etc/systemd/system/getty@tty1.service.d
+			cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+EOF
+			systemctl daemon-reload
+			G_WHIP_MSG "Autostart" "Console auto-login as root configured."
+			;;
+		2)
+			if id -u apollo >/dev/null 2>&1; then
+				mkdir -p /etc/systemd/system/getty@tty1.service.d
+				cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin apollo --noclear %I $TERM
+EOF
+				systemctl daemon-reload
+				G_WHIP_MSG "Autostart" "Console auto-login as apollo configured."
+			else
+				G_WHIP_MSG "Error" "User 'apollo' does not exist."
+			fi
+			;;
+		3)
+			rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf
+			systemctl daemon-reload
+			G_WHIP_MSG "Autostart" "Standard manual login prompt restored."
+			;;
+		4)
+			systemctl set-default graphical.target
+			G_WHIP_MSG "Autostart" "Set default target to Graphical (GUI)."
+			;;
+	esac
+
+	G_EXIT_BANNER
+}

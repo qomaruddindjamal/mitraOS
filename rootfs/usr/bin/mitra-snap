@@ -1,0 +1,122 @@
+#!/bin/bash
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY=/root/.Xauthority
+
+[ -f /etc/mitraos/geometry.conf ] && source /etc/mitraos/geometry.conf
+
+SCREEN_W=${SCREEN_W:-1024}
+SCREEN_H=${SCREEN_H:-768}
+TOP_Y=${TOP_Y:-28}
+DOCK_Y=${DOCK_Y:-720}
+USABLE_W=${USABLE_W:-1024}
+USABLE_H=${USABLE_H:-692}
+HALF_W=${HALF_W:-512}
+HALF_H=${HALF_H:-346}
+PRIORITY_LARGE_W=${PRIORITY_LARGE_W:-665}
+PRIORITY_SMALL_W=${PRIORITY_SMALL_W:-359}
+CENTER_X=${CENTER_X:-102}
+CENTER_Y=${CENTER_Y:-80}
+CENTER_W=${CENTER_W:-820}
+CENTER_H=${CENTER_H:-520}
+
+ACTION="${1:-center}"
+TARGET_ID="${2:-:ACTIVE:}"
+
+snap_window() {
+    local x="$1"
+    local y="$2"
+    local w="$3"
+    local h="$4"
+
+    # Enforce strict dock safety boundary
+    [ "$y" -lt "$TOP_Y" ] && y="$TOP_Y"
+    if [ $(( y + h )) -gt "$DOCK_Y" ]; then
+        h=$(( DOCK_Y - y ))
+    fi
+
+    wmctrl -r "$TARGET_ID" -b remove,maximized_vert,maximized_horz 2>/dev/null
+    wmctrl -r "$TARGET_ID" -e "0,${x},${y},${w},${h}" 2>/dev/null
+}
+
+clamp_window() {
+    local win="$TARGET_ID"
+    [ "$win" = ":ACTIVE:" ] && win=$(xdotool getactivewindow 2>/dev/null)
+    [ -z "$win" ] && return
+
+    eval $(xdotool getwindowgeometry --shell "$win" 2>/dev/null)
+    [ -z "$WIDTH" ] && return
+
+    local nx="$X_WIN"
+    local ny="$Y_WIN"
+    local changed=0
+
+    # Clamp X within screen bounds
+    if [ "$nx" -lt 0 ]; then
+        nx=0; changed=1
+    elif [ $(( nx + WIDTH )) -gt "$SCREEN_W" ]; then
+        nx=$(( SCREEN_W - WIDTH )); changed=1
+    fi
+
+    # Clamp Y between Top Menubar and Dock
+    if [ "$ny" -lt "$TOP_Y" ]; then
+        ny="$TOP_Y"; changed=1
+    elif [ $(( ny + HEIGHT )) -gt "$DOCK_Y" ]; then
+        ny=$(( DOCK_Y - HEIGHT )); changed=1
+    fi
+
+    if [ "$changed" -eq 1 ]; then
+        wmctrl -i -r "$win" -e "0,${nx},${ny},${WIDTH},${HEIGHT}" 2>/dev/null
+    fi
+}
+
+case "$ACTION" in
+    left|snap-left)
+        snap_window 0 "$TOP_Y" "$HALF_W" "$USABLE_H"
+        ;;
+    right|snap-right)
+        snap_window "$HALF_W" "$TOP_Y" "$HALF_W" "$USABLE_H"
+        ;;
+    priority-left)
+        snap_window 0 "$TOP_Y" "$PRIORITY_LARGE_W" "$USABLE_H"
+        ;;
+    priority-right)
+        snap_window "$PRIORITY_LARGE_W" "$TOP_Y" "$PRIORITY_SMALL_W" "$USABLE_H"
+        ;;
+    top|max|maximize)
+        snap_window 0 "$TOP_Y" "$USABLE_W" "$USABLE_H"
+        ;;
+    toggle_max)
+        CURR_W=$(xwininfo -id $(xdotool getactivewindow 2>/dev/null) 2>/dev/null | awk -F: '/Width/ {print $2}' | tr -d ' ')
+        CURR_H=$(xwininfo -id $(xdotool getactivewindow 2>/dev/null) 2>/dev/null | awk -F: '/Height/ {print $2}' | tr -d ' ')
+        if [ "$CURR_W" -ge 1000 ] && [ "$CURR_H" -ge 680 ]; then
+            snap_window "$CENTER_X" "$CENTER_Y" "$CENTER_W" "$CENTER_H"
+        else
+            snap_window 0 "$TOP_Y" "$USABLE_W" "$USABLE_H"
+        fi
+        ;;
+    center|restore)
+        snap_window "$CENTER_X" "$CENTER_Y" "$CENTER_W" "$CENTER_H"
+        ;;
+    topleft|tl)
+        snap_window 0 "$TOP_Y" "$HALF_W" "$HALF_H"
+        ;;
+    topright|tr)
+        snap_window "$HALF_W" "$TOP_Y" "$HALF_W" "$HALF_H"
+        ;;
+    bottomleft|bl)
+        snap_window 0 $(( TOP_Y + HALF_H + 2 )) "$HALF_W" "$HALF_H"
+        ;;
+    bottomright|br)
+        snap_window "$HALF_W" $(( TOP_Y + HALF_H + 2 )) "$HALF_W" "$HALF_H"
+        ;;
+    clamp)
+        clamp_window
+        ;;
+    min|minimize)
+        xdotool getactivewindow windowminimize 2>/dev/null || wmctrl -r :ACTIVE: -b add,hidden 2>/dev/null
+        ;;
+    close)
+        wmctrl -c :ACTIVE: 2>/dev/null
+        ;;
+esac

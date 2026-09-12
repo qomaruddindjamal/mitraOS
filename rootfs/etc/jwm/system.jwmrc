@@ -1,0 +1,342 @@
+<?xml version="1.0"?>
+<JWM>
+    <!-- ICON SEARCH PATHS -->
+    <IconPath>/usr/share/mitraos</IconPath>
+    <IconPath>/usr/share/pixmaps</IconPath>
+    <IconPath>/usr/share/icons</IconPath>
+
+    <!-- macOS Traffic Light Window Buttons (Left: Close Red, Min Yellow, Max Green) -->
+    <ButtonClose>/usr/share/mitraos/btn_close.png</ButtonClose>
+    <ButtonMin>/usr/share/mitraos/btn_min.png</ButtonMin>
+    <ButtonMax>/usr/share/mitraos/btn_max.png</ButtonMax>
+    <ButtonMaxActive>/usr/share/mitraos/btn_max.png</ButtonMaxActive>
+    <TitleButtonOrder>ximt</TitleButtonOrder>
+
+    <!-- VIRTUAL DESKTOPS / macOS SPACES (Default 4 Spaces) -->
+    <Desktops width="4" height="1">
+        <Background type="scale">/usr/share/mitraos/wallpaper.jpg</Background>
+        <Desktop name="Desktop 1"/>
+        <Desktop name="Desktop 2"/>
+        <Desktop name="Desktop 3"/>
+        <Desktop name="Desktop 4"/>
+    </Desktops>
+
+    <!-- WINDOW GROUPS & ICONS -->
+    <Group>
+        <Class>XTerm</Class>
+        <Option>icon:terminal.png</Option>
+    </Group>
+    <Group>
+        <Name>mitra-terminal</Name>
+        <Option>icon:terminal.png</Option>
+    </Group>
+
+    <!-- TOP HEADER BAR - macOS Menubar (100% Full Width 1024px) -->
+    <Tray x="0" y="0" width="1024" height="28" autohide="off">
+        <TrayButton icon="/usr/share/mitraos/logo_white_small.png">root:a</TrayButton>
+        <Spacer width="6"/>
+        
+        <!-- WORKSTATION MENU BUTTON -->
+        <TrayButton label="Workstation">root:b</TrayButton>
+        <Spacer width="4"/>
+        
+        <TrayButton label="File">root:c</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="Edit">root:d</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="View">root:e</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="Application">root:f</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="Desktop">root:s</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="Window">root:g</TrayButton>
+        <Spacer width="2"/>
+        <TrayButton label="Help">root:h</TrayButton>
+        
+        <!-- PUSH TO RIGHT -->
+        <Spacer/>
+        
+        <!-- ACTIVE NETWORK ICON WITH DROPDOWN -->
+        <TrayButton icon="/usr/share/mitraos/net_status.png">root:i</TrayButton>
+        <Spacer width="8"/>
+        
+        <!-- SPOTLIGHT ICON -->
+        <TrayButton icon="/usr/share/mitraos/spotlight.png">exec:/usr/bin/mitra-spotlight</TrayButton>
+        <Spacer width="10"/>
+        
+        <!-- CLOCK & DATE -->
+        <Clock format="%H:%M  -  %a, %d %b"><Button mask="1">exec:/usr/bin/mitra-calendar</Button></Clock>
+        <Spacer width="8"/>
+    </Tray>
+
+    <!-- FLOATING DOCK (Bottom Centered) -->
+    <Tray x="349" y="-8" width="326" height="38" autohide="off">
+        <Spacer width="10"/>
+        <TrayButton icon="/usr/share/mitraos/workstation_dock.png" popup="Workstation">exec:/usr/bin/mitra-terminal</TrayButton>
+        <Spacer width="10"/>
+        <TrayButton icon="/usr/share/mitraos/control_center.png" popup="Control Center">exec:/usr/bin/mitra-terminal -e /boot/apollo/mitra</TrayButton>
+        <Spacer width="10"/>
+        <!-- PINNED APPS (DYNAMIC) -->
+        <Spacer width="8"/>
+        <Spacer width="8"/>
+        <!-- SEPARATOR 1: DI DEPAN APLIKASI AKTIF -->
+        <TrayButton icon="/usr/share/mitraos/dock_separator.png" popup="Pengaturan Dock (Klik Kanan)">
+            <Button mask="3">root:l</Button>
+            <Button mask="1">root:l</Button>
+        </TrayButton>
+        <Spacer width="8"/>
+
+        <!-- APLIKASI AKTIF (TASKLIST) -->
+        <TaskList labeled="false" maxwidth="36"/>
+        <Spacer width="8"/>
+
+        <!-- SEPARATOR 2: SETELAH APLIKASI AKTIF -->
+        <TrayButton icon="/usr/share/mitraos/dock_separator.png" popup="Pengaturan Dock (Klik Kanan)">
+            <Button mask="3">root:l</Button>
+            <Button mask="1">root:l</Button>
+        </TrayButton>
+        <Spacer width="8"/>
+        <TrayButton icon="/usr/share/mitraos/folder_group.png" popup="Kelompok Folder (Downloads, Documents, Pictures, Videos)">root:k</TrayButton>
+        <Spacer width="10"/>
+        <TrayButton icon="/usr/share/mitraos/trash.png" popup="Trash (Tempat Sampah)">root:j</TrayButton>
+        <Spacer width="10"/>
+    </Tray>
+
+    <!-- DESKTOP CONTEXT MENU (MOUSE BUTTON 3 / RIGHT CLICK ONLY) -->
+    <!-- Left-click (Button 1) on desktop has NO MENU mapped, so left-click never pops up dialogs -->
+    <RootMenu onroot="3">
+        <Program label="New Terminal Window">/usr/bin/mitra-terminal</Program>
+        <Program label="File Manager (mc)">/usr/bin/mitra-terminal -e mc</Program>
+        <Separator/>
+        <Program label="Multi-OS App Hub">/usr/bin/mitra-terminal -e /boot/apollo/mitra-apps</Program>
+        <Program label="System Preferences...">/usr/bin/mitra-terminal -e /boot/apollo/mitra-config</Program>
+        <Separator/>
+        <Restart label="Refresh Desktop"/>
+    </RootMenu>
+
+    <!-- MENU a: SYSTEM / LOGO (TOP LEFT LOGO BUTTON ONLY) -->
+    <RootMenu onroot="a">
+        <Program label="About mitraOS">/usr/bin/mitra-terminal -e /bin/mitra-banner</Program>
+        <Program label="System Information">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>
+        <Program label="System Preferences...">/usr/bin/mitra-terminal -e /boot/apollo/mitra-config</Program>
+        <Separator/>
+        <Program label="Restart">/bin/shutdown -r</Program>
+        <Program label="Shutdown">/bin/shutdown</Program>
+    </RootMenu>
+
+    <!-- MENU b: WORKSTATION -->
+    <RootMenu onroot="b">
+        <Program label="Control Center">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>
+        <Separator/>
+        <Program label="Activity Monitor (top)">/usr/bin/mitra-terminal -e top</Program>
+        <Program label="Storage &amp; Disks (df)">/usr/bin/mitra-terminal -e df -h</Program>
+        <Program label="Memory Usage (free)">/usr/bin/mitra-terminal -e free -m</Program>
+    </RootMenu>
+
+    <!-- MENU c: FILE -->
+    <RootMenu onroot="c">
+        <Program label="New Terminal Window">/usr/bin/mitra-terminal</Program>
+        <Program label="New Editor File (nano)">/usr/bin/mitra-terminal -e nano</Program>
+        <Separator/>
+        <Program label="Open File Manager">/usr/bin/mitra-terminal -e mc</Program>
+    </RootMenu>
+
+    <!-- MENU d: EDIT -->
+    <RootMenu onroot="d">
+        <Program label="Cut">xdotool key ctrl+x 2>/dev/null || true</Program>
+        <Program label="Copy">xdotool key ctrl+c 2>/dev/null || true</Program>
+        <Program label="Paste">xdotool key ctrl+v 2>/dev/null || true</Program>
+    </RootMenu>
+
+    <!-- MENU e: VIEW -->
+    <RootMenu onroot="e">
+        <Program label="Full Screen (F11)">xdotool key F11 2>/dev/null || true</Program>
+        <Program label="Reload Desktop UI">jwm -restart</Program>
+        <Separator/>
+        <Program label="Screen Resolution: 1024x768">true</Program>
+    </RootMenu>
+
+    <!-- MENU f: APPLICATION -->
+    <RootMenu onroot="f">
+        <Program label="Mitra App Hub">/usr/bin/mitra-terminal -e /boot/apollo/mitra-apps</Program>
+        <Program label="File Explorer (Workstation)">/usr/bin/mitra-explorer</Program>
+        <Separator/>
+        <Program label="Control Center">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>
+        <Program label="Terminal Emulator">/usr/bin/mitra-terminal</Program>
+        <Program label="Console File Manager (mc)">/usr/bin/mitra-terminal -e mc</Program>
+        <Separator/>
+        <Program label="Remote Assistance">/usr/bin/mitra-terminal -e /boot/apollo/mitra-asisten</Program>
+    </RootMenu>
+
+    <!-- MENU s: macOS SPACES & DESKTOP BARU -->
+    <RootMenu onroot="s">
+        <Program label="➕ Desktop Baru (Tambah Space)">/usr/bin/mitra-spaces add</Program>
+        <Program label="🖥 Mission Control (Spaces Manager)">/usr/bin/mitra-terminal -title "Mission Control - macOS Spaces" -geometry 80x24 -e /usr/bin/mitra-spaces menu</Program>
+        <Separator/>
+        <Desktops label="Beralih ke Desktop"/>
+        <Separator/>
+        <Program label="◀ Beralih ke Desktop Kiri  (Ctrl + ←)">/usr/bin/mitra-spaces prev</Program>
+        <Program label="▶ Beralih ke Desktop Kanan (Ctrl + →)">/usr/bin/mitra-spaces next</Program>
+        <Separator/>
+        <SendTo label="Pindahkan Jendela ke Desktop..."/>
+    </RootMenu>
+
+    <!-- MENU g: WINDOW & SNAP LAYOUT (Windows 11 Style) -->
+    <RootMenu onroot="g">
+        <Menu label="Snap Layout (Tata Letak Jendela)">
+            <Program label="▌ Snap Setengah Kiri    (Win + ←)">/usr/bin/mitra-snap left</Program>
+            <Program label="▐ Snap Setengah Kanan   (Win + →)">/usr/bin/mitra-snap right</Program>
+            <Program label="▀ Snap Setengah Atas    (Win + Shift + ↑)">/usr/bin/mitra-snap top</Program>
+            <Program label="▄ Snap Setengah Bawah   (Win + Shift + ↓)">/usr/bin/mitra-snap bottom</Program>
+            <Separator/>
+            <Program label="◤ Sudut Kiri-Atas      [Kuadran 25%]">/usr/bin/mitra-snap topleft</Program>
+            <Program label="◥ Sudut Kanan-Atas     [Kuadran 25%]">/usr/bin/mitra-snap topright</Program>
+            <Program label="◣ Sudut Kiri-Bawah     [Kuadran 25%]">/usr/bin/mitra-snap bottomleft</Program>
+            <Program label="◢ Sudut Kanan-Bawah    [Kuadran 25%]">/usr/bin/mitra-snap bottomright</Program>
+            <Separator/>
+            <Program label="■ Maksimalkan Layar    (Win + ↑)">/usr/bin/mitra-snap max</Program>
+            <Program label="▣ Pulihkan Ukuran       (Win + ↓)">/usr/bin/mitra-snap restore</Program>
+            <Program label="◎ Ratakan di Tengah     (Center)">/usr/bin/mitra-snap center</Program>
+            <Separator/>
+            <Program label="Pilih Tata Letak Visual (Snap HUD)...">/usr/bin/mitra-terminal -title "Snap Layout - MitraOS" -geometry 75x20 -e /usr/bin/mitra-snap menu</Program>
+        </Menu>
+        <Separator/>
+        <SendTo label="Pindahkan Jendela ke Desktop..."/>
+        <Separator/>
+        <Program label="Perkecil Jendela (Minimize)">/usr/bin/mitra-snap min</Program>
+        <Program label="Tutup Jendela (Close)">/usr/bin/mitra-snap close</Program>
+    </RootMenu>
+
+    <!-- MENU h: HELP -->
+    <RootMenu onroot="h">
+        <Program label="mitraOS Manual &amp; Docs">/usr/bin/mitra-terminal -e man jwm</Program>
+        <Program label="Network Diagnostic">/usr/bin/mitra-terminal -e ping -c 4 8.8.8.8</Program>
+        <Separator/>
+        <Program label="About Developer">/usr/bin/mitra-terminal -e /bin/mitra-banner</Program>
+    </RootMenu>
+
+    <!-- MENU i: NETWORK STATUS DROPDOWN -->
+    <RootMenu onroot="i">
+        <Program label="IP &amp; Interface Info">/usr/bin/mitra-terminal -e ip a</Program>
+        <Program label="Network Route Table">/usr/bin/mitra-terminal -e route -n</Program>
+        <Separator/>
+        <Program label="Test Internet Connection (Ping)">/usr/bin/mitra-terminal -e ping -c 4 8.8.8.8</Program>
+        <Program label="Restart Network Service">/usr/bin/mitra-terminal -e systemctl restart networking</Program>
+    </RootMenu>
+
+    <!-- MENU j: TRASH / SAMPAH DROPDOWN -->
+    <RootMenu onroot="j">
+        <Program label="Buka Tempat Sampah (Open Trash)">/usr/bin/mitra-trash open</Program>
+        <Program label="Kosongkan Sampah (Empty Trash)">/usr/bin/mitra-trash empty</Program>
+        <Program label="Status &amp; Ukuran Sampah">/usr/bin/mitra-trash status</Program>
+        <Separator/>
+        <Program label="Pembersih Sistem (Mitra Cleaner)">/usr/bin/mitra-trash cleaner</Program>
+    </RootMenu>
+
+        <!-- MENU k: USER FOLDERS GROUP (KELOMPOK FOLDER) -->
+    <RootMenu onroot="k">
+        <Program label="Documents">/usr/bin/mitra-explorer /home/mitra/Documents</Program>
+        <Program label="Downloads">/usr/bin/mitra-explorer /home/mitra/Downloads</Program>
+        <Program label="Music">/usr/bin/mitra-explorer /home/mitra/Music</Program>
+        <Program label="Pictures">/usr/bin/mitra-explorer /home/mitra/Pictures</Program>
+        <Program label="Videos">/usr/bin/mitra-explorer /home/mitra/Videos</Program>
+    </RootMenu>
+
+    <!-- MENU l: DOCK SETTINGS (PENGATURAN DOCK) -->
+    <RootMenu onroot="l">
+        <Program label="Sembunyikan Otomatis (Toggle Autohide)">/usr/bin/mitra-dock-config autohide</Program>
+        <Separator/>
+        <Menu label="Ketinggian / Ukuran Dock">
+            <Program label="Kecil (32px)">/usr/bin/mitra-dock-config size 32</Program>
+            <Program label="Sedang (38px - Standar)">/usr/bin/mitra-dock-config size 38</Program>
+            <Program label="Besar (46px)">/usr/bin/mitra-dock-config size 46</Program>
+        </Menu>
+        <Program label="Pusat Pengaturan Dock...">/usr/bin/mitra-terminal -e /usr/bin/mitra-dock-config</Program>
+        <Separator/>
+        <Program label="Segarkan Dock (Reload)">/usr/bin/mitra-dock-config reload</Program>
+    </RootMenu>
+
+    <!-- STYLES -->
+    <WindowStyle>
+        <Font>DejaVu Sans-9:bold</Font>
+        <Width>2</Width>
+        <Height>22</Height>
+        <Corner>4</Corner>
+        <Foreground>#e2e8f0</Foreground>
+        <Background>#0d1117</Background>
+        <Outline>#1f293d</Outline>
+        <Opacity>0.95</Opacity>
+        <Active>
+            <Foreground>#00f2fe</Foreground>
+            <Background>#161b22</Background>
+            <Outline>#00f2fe</Outline>
+            <Opacity>1.0</Opacity>
+        </Active>
+    </WindowStyle>
+
+    <TrayStyle>
+        <Font>DejaVu Sans-9:bold</Font>
+        <Background>#06090e</Background>
+        <Foreground>#e2e8f0</Foreground>
+    </TrayStyle>
+
+    <TrayButtonStyle>
+        <Font>DejaVu Sans-9:bold</Font>
+        <Foreground>#e2e8f0</Foreground>
+        <Background>#06090e</Background>
+        <Active>
+            <Foreground>#00f2fe</Foreground>
+            <Background>#161f30</Background>
+        </Active>
+    </TrayButtonStyle>
+
+    <TaskListStyle decorations="flat">
+        <Font>DejaVu Sans-9:bold</Font>
+        <Foreground>#e2e8f0</Foreground>
+        <Background>#06090e</Background>
+        <Active>
+            <Foreground>#00f2fe</Foreground>
+            <Background>#161f30</Background>
+        </Active>
+    </TaskListStyle>
+
+    <ClockStyle>
+        <Font>DejaVu Sans-9:bold</Font>
+        <Foreground>#e2e8f0</Foreground>
+        <Background>#06090e</Background>
+    </ClockStyle>
+
+    <MenuStyle>
+        <Font>DejaVu Sans-9</Font>
+        <Foreground>#e2e8f0</Foreground>
+        <Background>#0d1117</Background>
+        <Active>
+            <Foreground>#ffffff</Foreground>
+            <Background>#007acc</Background>
+        </Active>
+        <Opacity>0.96</Opacity>
+    </MenuStyle>
+
+    <!-- KEYBINDINGS (macOS & Windows Style) -->
+    <Key mask="A" key="Tab">nextstacked</Key>
+    <Key mask="C" key="space">exec:/usr/bin/mitra-spotlight</Key>
+    <Key mask="4" key="space">exec:/usr/bin/mitra-spotlight</Key>
+    <Key mask="CA" key="t">exec:/usr/bin/mitra-terminal</Key>
+
+    <!-- WINDOW SNAP LAYOUT SHORTCUTS (Windows 11 Style) -->
+    <Key mask="4" key="Left">maxleft</Key>
+    <Key mask="4" key="Right">maxright</Key>
+    <Key mask="4" key="Up">maximize</Key>
+    <Key mask="4" key="Down">restore</Key>
+    <Key mask="A" key="Left">maxleft</Key>
+    <Key mask="A" key="Right">maxright</Key>
+    <Key mask="A" key="Up">maximize</Key>
+    <Key mask="A" key="Down">restore</Key>
+
+    <!-- macOS DESKTOPS / SPACES SWITCHING SHORTCUTS -->
+    <Key mask="C" key="Left">ldesktop</Key>
+    <Key mask="C" key="Right">rdesktop</Key>
+    <Key mask="4" key="#">desktop#</Key>
+    <Key mask="4S" key="#">send#</Key>
+</JWM>

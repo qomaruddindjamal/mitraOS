@@ -6,34 +6,10 @@
 	# Zero UTF-8 multibyte characters for 100% universal terminal fidelity
 	#//////////////////////////////////////////////////////////////////
 
-	# Source Globals if available with broad discovery
-	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-	for _g in \
-		"$_DIR/../lib/mitra-globals" \
-		"$_DIR/mitra-globals" \
-		"$_DIR/func/mitra-globals" \
-		"$_DIR/func/apollo-globals" \
-		"/boot/apollo/func/mitra-globals" \
-		"/boot/apollo/func/apollo-globals" \
-		"/boot/apollo/mitra-globals" \
-		"/boot/mitraos/func/mitra-globals" \
-		"/opt/mitraos/lib/mitra-globals" \
-		"/cdrom/mitraos/lib/mitra-globals" \
-		"/cdrom/apollo/func/apollo-globals" \
-		"/cdrom/apollo/tools/mitra-globals" \
-		"/bin/mitra-globals" \
-		"/usr/bin/mitra-globals"; do
-		if [[ -f "$_g" ]]; then
-			. "$_g" 2>/dev/null || true
-			break
-		fi
-	done
-
-	# Fallback system defaults so banner NEVER crashes
-	[[ -n $MITRA_VERSION_STRING ]] || MITRA_VERSION_STRING="1.0.0"
-	[[ -n $MITRA_CODENAME ]] || MITRA_CODENAME="Apollo"
-	[[ -n $MITRA_FOUNDER ]] || MITRA_FOUNDER="Qomaruddin Djamal"
-	[[ -n $MITRA_ORGANIZATION ]] || MITRA_ORGANIZATION="Citra Media Technology & Mitra Utama Group"
+	# Source Globals if available
+	if [[ -f '/boot/apollo/func/apollo-globals' ]]; then
+		. /boot/apollo/func/apollo-globals
+	fi
 
 	# Live Watch Mode: updates every second like a real-time monitor
 	if [[ "$1" == "-w" || "$1" == "--watch" || "$1" == "live" || "$1" == "-l" ]]; then
@@ -128,8 +104,8 @@
 	for ((d=0; d<dash_count; d++)); do header_dashes+="-"; done
 
 	# Host & Network detection
-	hname=$(cat /etc/hostname 2>/dev/null || hostname 2>/dev/null || echo "apollo")
-	[[ -z "$hname" ]] && hname="apollo"
+	hname=$(cat /etc/hostname 2>/dev/null || hostname 2>/dev/null || echo "mitraOS")
+	[[ -z "$hname" ]] && hname="mitraOS"
 
 	net_info=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7 " / " $5; exit}')
 	if [[ -z "$net_info" ]]; then

@@ -1,0 +1,114 @@
+#!/bin/bash
+# MitraOS macOS Spaces & Virtual Desktops Manager
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+export DISPLAY="${DISPLAY:-:0}"
+
+JWMRC="/root/.jwmrc"
+SYS_JWMRC="/etc/jwm/system.jwmrc"
+
+ACTION="${1:-menu}"
+
+get_desktop_count() {
+    grep -c '<Desktop name=' "$JWMRC" 2>/dev/null || echo 4
+}
+
+add_desktop() {
+    local cur_count=$(get_desktop_count)
+    local new_count=$(( cur_count + 1 ))
+    local new_name="Desktop $new_count"
+
+    # Insert new <Desktop name="Desktop N"/> before </Desktops>
+    sed -i -E "s/<Desktops width=\"[0-9]+\"/<Desktops width=\"${new_count}\"/" "$JWMRC"
+    sed -i "/<\/Desktops>/i \        <Desktop name=\"${new_name}\"\/>" "$JWMRC"
+
+    cp "$JWMRC" "$SYS_JWMRC" 2>/dev/null || true
+    DISPLAY=:0 jwm -restart 2>/dev/null || true
+    sync
+
+    # Switch to the new desktop (0-indexed in wmctrl)
+    sleep 0.2
+    wmctrl -s $(( new_count - 1 )) 2>/dev/null || true
+
+    [ -t 0 ] && whiptail --title "macOS Spaces - MitraOS" --msgbox "Sukses! '${new_name}' (Ruang Kerja Baru) telah dibuat.\nAnda sekarang berada di ${new_name}." 10 60
+}
+
+goto_desktop() {
+    local num="$1"
+    [ -z "$num" ] && return 1
+    local idx=$(( num - 1 ))
+    wmctrl -s "$idx" 2>/dev/null || true
+}
+
+next_desktop() {
+    local cur=$(wmctrl -d | grep '\*' | cut -d' ' -f1)
+    local total=$(get_desktop_count)
+    local next=$(( (cur + 1) % total ))
+    wmctrl -s "$next" 2>/dev/null || true
+}
+
+prev_desktop() {
+    local cur=$(wmctrl -d | grep '\*' | cut -d' ' -f1)
+    local total=$(get_desktop_count)
+    local prev=$(( (cur - 1 + total) % total ))
+    wmctrl -s "$prev" 2>/dev/null || true
+}
+
+case "$ACTION" in
+    add|new)
+        add_desktop
+        ;;
+    goto)
+        goto_desktop "$2"
+        ;;
+    next)
+        next_desktop
+        ;;
+    prev)
+        prev_desktop
+        ;;
+    list)
+        wmctrl -d 2>/dev/null
+        ;;
+    menu)
+        cur_active=$(wmctrl -d | grep '\*' | cut -d' ' -f1)
+        total=$(get_desktop_count)
+        
+        MENU_ITEMS=()
+        for (( i=0; i<total; i++ )); do
+            dnum=$(( i + 1 ))
+            status=""
+            if [ "$i" -eq "$cur_active" ]; then
+                status=" [AKTIF SAAT INI]"
+            fi
+            # Count windows in this desktop
+            wcount=$(wmctrl -l | awk -v d="$i" '$2 == d {count++} END {print count+0}')
+            MENU_ITEMS+=("$dnum" "🖥 Desktop $dnum (Space $dnum)$status - $wcount Jendela")
+        done
+        MENU_ITEMS+=("+" "➕ Buat Desktop Baru (Tambah Space Baru)")
+        MENU_ITEMS+=("M" "🔀 Pindahkan Jendela Aktif ke Desktop...")
+
+        CHOICE=$(whiptail --title "macOS Spaces & Mission Control - MitraOS" \
+            --menu "Pilih Desktop / Ruang Kerja:\n(Shortcut: Ctrl+Panah atau Win+1..4)" 20 72 10 \
+            "${MENU_ITEMS[@]}" 3>&1 1>&2 2>&3)
+            
+        case "$CHOICE" in
+            "+")
+                add_desktop
+                ;;
+            "M")
+                TARGET=$(whiptail --title "Pindahkan Jendela" --menu "Pilih desktop tujuan untuk jendela aktif:" 15 50 6 \
+                    "1" "Desktop 1" "2" "Desktop 2" "3" "Desktop 3" "4" "Desktop 4" 3>&1 1>&2 2>&3)
+                if [ -n "$TARGET" ]; then
+                    wmctrl -r :ACTIVE: -t $(( TARGET - 1 )) 2>/dev/null
+                fi
+                ;;
+            [0-9]*)
+                goto_desktop "$CHOICE"
+                ;;
+        esac
+        ;;
+    *)
+        echo "Usage: mitra-spaces {add|goto <N>|next|prev|list|menu}"
+        exit 1
+        ;;
+esac

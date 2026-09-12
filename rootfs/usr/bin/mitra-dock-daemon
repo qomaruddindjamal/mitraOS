@@ -1,0 +1,54 @@
+#!/bin/bash
+# MitraOS Dynamic Dock Watcher Daemon
+# Automatically adjusts Dock width and centers position as windows open/close
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+CONF_FILE="/etc/mitraos/dock_apps.conf"
+JWMRC="/root/.jwmrc"
+SYS_JWMRC="/etc/jwm/system.jwmrc"
+
+last_active=-1
+last_pinned=-1
+
+# Avoid duplicate daemon instances
+PIDFILE="/tmp/mitra-dock-daemon.pid"
+if [ -f "$PIDFILE" ]; then
+    old_pid=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$old_pid" ] && [ "$old_pid" != "$$" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill "$old_pid" 2>/dev/null || true
+    fi
+fi
+echo "$$" > "$PIDFILE"
+
+while true; do
+    # Count active client windows (xterm/mitra windows)
+    active=$(ps aux | grep -c '[x]term')
+    
+    # Count pinned apps from config
+    pinned=0
+    if [ -f "$CONF_FILE" ]; then
+        pinned=$(grep -c '^[a-zA-Z0-9]' "$CONF_FILE" 2>/dev/null || echo 0)
+    fi
+
+    if [ "$active" != "$last_active" ] || [ "$pinned" != "$last_pinned" ]; then
+        last_active="$active"
+        last_pinned="$pinned"
+
+        # Formula:
+        # Base fixed items: 238px
+        # Each pinned app: 44px
+        # Each active app: 44px
+        # Total width = 238 + (pinned * 44) + (active * 44)
+        w=$(( 238 + pinned * 44 + active * 44 ))
+        x=$(( (1024 - w) / 2 ))
+
+        # Update width and x in JWMRC
+        if [ -f "$JWMRC" ]; then
+            sed -i -E "s/<Tray x=\"[0-9]+\" y=\"-8\" width=\"[0-9]+\"/<Tray x=\"${x}\" y=\"-8\" width=\"${w}\"/" "$JWMRC"
+            cp "$JWMRC" "$SYS_JWMRC" 2>/dev/null || true
+            DISPLAY=:0 jwm -restart 2>/dev/null || true
+        fi
+    fi
+
+    sleep 0.5
+done

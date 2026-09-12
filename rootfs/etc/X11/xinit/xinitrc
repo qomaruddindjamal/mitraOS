@@ -1,0 +1,7 @@
+#!/bin/sh
+xset s off -dpms 2>/dev/null &
+/usr/bin/mitra-dock-daemon &
+while true; do
+    jwm
+    sleep 1
+done

@@ -1,0 +1,16 @@
+#!/bin/bash
+export DISPLAY=:0
+export HOME=/root
+
+# Load evdev module for absolute Hyper-V mouse pointer synchronization
+insmod /lib/modules/6.1.0-52-amd64/kernel/drivers/input/evdev.ko 2>/dev/null || true
+
+# Permissions
+chmod 666 /dev/input/* 2>/dev/null || true
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp/.X11-unix
+
+while true; do
+    xinit /etc/X11/xinit/xinitrc -- /usr/lib/xorg/Xorg :0 vt1 -keeptty > /var/log/xorg.log 2>&1
+    sleep 1
+done

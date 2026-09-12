@@ -1,0 +1,83 @@
+#!/bin/bash
+# MitraOS Dock Settings Utility
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+JWMRC="/root/.jwmrc"
+
+ACTION="$1"
+ARG="$2"
+
+toggle_autohide() {
+    if grep 'y="-8"' "$JWMRC" | grep -q 'autohide="bottom"'; then
+        sed -i -E '/y="-8"/ s/autohide="[a-z]+"/autohide="off"/' "$JWMRC"
+        [ -t 0 ] && whiptail --title "Pengaturan Dock" --msgbox "Autohide Dock: NON-AKTIF (Dock selalu tampil)." 10 50
+    else
+        sed -i -E '/y="-8"/ s/autohide="[a-z]+"/autohide="bottom"/' "$JWMRC"
+        [ -t 0 ] && whiptail --title "Pengaturan Dock" --msgbox "Autohide Dock: AKTIF (Dock otomatis sembunyi saat mouse menjauh)." 10 60
+    fi
+    cp "$JWMRC" /etc/jwm/system.jwmrc 2>/dev/null || true
+    DISPLAY=:0 jwm -restart 2>/dev/null || true
+}
+
+set_size() {
+    local H="$1"
+    if [ -z "$H" ]; then
+        if [ -t 0 ]; then
+            SZ=$(whiptail --title "Ukuran Ketinggian Dock" --menu "Pilih ketinggian bilah Dock:" 14 55 3 \
+                "1" "Kecil   (Ketinggian 32px)" \
+                "2" "Sedang  (Ketinggian 38px - Standar)" \
+                "3" "Besar   (Ketinggian 46px)" 3>&1 1>&2 2>&3)
+            case "$SZ" in
+                1) H=32 ;;
+                2) H=38 ;;
+                3) H=46 ;;
+                *) return ;;
+            esac
+        else
+            return
+        fi
+    fi
+    sed -i -E "/y=\"-8\"/ s/height=\"[0-9]+\"/height=\"$H\"/" "$JWMRC"
+    cp "$JWMRC" /etc/jwm/system.jwmrc 2>/dev/null || true
+    DISPLAY=:0 jwm -restart 2>/dev/null || true
+    if [ -t 0 ]; then
+        whiptail --title "Sukses" --msgbox "Ukuran Dock diperbarui ke ${H}px!" 10 45
+    fi
+}
+
+menu_interactive() {
+    while true; do
+        AUTOHIDE_STATUS="OFF (Selalu Tampil)"
+        grep 'y="-8"' "$JWMRC" | grep -q 'autohide="bottom"' && AUTOHIDE_STATUS="ON (Sembunyi Otomatis)"
+        CURRENT_H=$(grep 'y="-8"' "$JWMRC" | sed -n -E 's/.*height="([0-9]+)".*/\1/p')
+        [ -z "$CURRENT_H" ] && CURRENT_H="38"
+
+        CHOICE=$(whiptail --title "MitraOS - Pengaturan Dock" \
+            --menu "Sesuaikan tampilan dan perilaku bilah Dock:\nStatus Autohide: $AUTOHIDE_STATUS | Tinggi: ${CURRENT_H}px" 17 65 5 \
+            "1" "Aktifkan/Nonaktifkan Sembunyi Otomatis (Autohide)" \
+            "2" "Ubah Ketinggian / Skala Dock" \
+            "3" "Segarkan / Restart Dock (Reload)" \
+            "0" "Kembali ke Desktop" 3>&1 1>&2 2>&3)
+            
+        case "$CHOICE" in
+            1) toggle_autohide ;;
+            2) set_size ;;
+            3) DISPLAY=:0 jwm -restart 2>/dev/null ; whiptail --title "Sukses" --msgbox "Dock berhasil disegarkan!" 10 45 ;;
+            *) break ;;
+        esac
+    done
+}
+
+case "$ACTION" in
+    autohide)
+        toggle_autohide
+        ;;
+    size)
+        set_size "$ARG"
+        ;;
+    reload)
+        DISPLAY=:0 jwm -restart 2>/dev/null || true
+        ;;
+    *)
+        menu_interactive
+        ;;
+esac

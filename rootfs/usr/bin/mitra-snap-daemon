@@ -1,0 +1,95 @@
+#!/bin/bash
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY=/root/.Xauthority
+
+[ -f /etc/mitraos/geometry.conf ] && source /etc/mitraos/geometry.conf
+
+SCREEN_W=${SCREEN_W:-1024}
+SCREEN_H=${SCREEN_H:-768}
+TOP_Y=${TOP_Y:-28}
+DOCK_Y=${DOCK_Y:-720}
+
+HUD_OPEN=0
+PREV_BTN1=0
+PREV_X=0
+PREV_Y=0
+
+while true; do
+    # Query mouse location & button state
+    eval $(xdotool getmouselocation --shell 2>/dev/null)
+    [ -z "$X" ] && { sleep 0.08; continue; }
+
+    # Query active window
+    ACT_WIN=$(xdotool getactivewindow 2>/dev/null)
+    if [ -n "$ACT_WIN" ]; then
+        WIN_NAME=$(xdotool getwindowname "$ACT_WIN" 2>/dev/null)
+        if [ "$WIN_NAME" != "MitraSnapHUD" ] && [ "$WIN_NAME" != "surf" ]; then
+            eval $(xdotool getwindowgeometry --shell "$ACT_WIN" 2>/dev/null)
+            
+            # 1. GREEN BUTTON HOVER DETECTION
+            if [ -n "$WIDTH" ]; then
+                BTN_X_MIN=$(( X_WIN + WIDTH - 48 ))
+                BTN_X_MAX=$(( X_WIN + WIDTH - 18 ))
+                BTN_Y_MIN=$(( Y_WIN - 26 ))
+                [ "$BTN_Y_MIN" -lt "$TOP_Y" ] && BTN_Y_MIN="$TOP_Y"
+                BTN_Y_MAX=$(( BTN_Y_MIN + 26 ))
+
+                if [ "$X" -ge "$BTN_X_MIN" ] && [ "$X" -le "$BTN_X_MAX" ] &&                    [ "$Y" -ge "$BTN_Y_MIN" ] && [ "$Y" -le "$BTN_Y_MAX" ]; then
+                    if [ "$HUD_OPEN" -eq 0 ]; then
+                        SPAWN_X=$(( BTN_X_MAX - 200 ))
+                        [ "$SPAWN_X" -lt 10 ] && SPAWN_X=10
+                        SPAWN_Y=$(( BTN_Y_MAX + 4 ))
+
+                        DISPLAY=:0 surf -b -N -x "http://127.0.0.1:9191/hud.html" >/dev/null 2>&1 &
+                        HUD_OPEN=1
+                        sleep 0.12
+                        HUD_WIN=$(xdotool search --class "surf" 2>/dev/null | tail -n 1)
+                        if [ -n "$HUD_WIN" ]; then
+                            xdotool set_window --name "MitraSnapHUD" "$HUD_WIN" 2>/dev/null
+                            xdotool windowsize "$HUD_WIN" 210 64 2>/dev/null
+                            xdotool windowmove "$HUD_WIN" "$SPAWN_X" "$SPAWN_Y" 2>/dev/null
+                            xdotool windowraise "$HUD_WIN" 2>/dev/null
+                        fi
+                    fi
+                else
+                    # Close HUD if mouse leaves both button and HUD window
+                    if [ "$HUD_OPEN" -eq 1 ]; then
+                        HUD_X_MAX=$(( SPAWN_X + 220 ))
+                        HUD_Y_MAX=$(( SPAWN_Y + 75 ))
+                        if [ "$X" -lt "$SPAWN_X" ] || [ "$X" -gt "$HUD_X_MAX" ] ||                            [ "$Y" -lt "$SPAWN_Y" ] || [ "$Y" -gt "$HUD_Y_MAX" ]; then
+                            killall -9 surf 2>/dev/null || true
+                            HUD_OPEN=0
+                        fi
+                    fi
+                fi
+            fi
+
+            # 2. WINDOWS AERO SNAP: EDGE DRAG DETECTION
+            # When mouse reaches the screen edge while dragging:
+            if [ "$X" -le 3 ]; then
+                # Left Edge Trigger -> Snap Left 50%
+                /usr/bin/mitra-snap left >/dev/null 2>&1
+                sleep 0.4
+            elif [ "$X" -ge $(( SCREEN_W - 4 )) ]; then
+                # Right Edge Trigger -> Snap Right 50%
+                /usr/bin/mitra-snap right >/dev/null 2>&1
+                sleep 0.4
+            elif [ "$Y" -le $(( TOP_Y + 2 )) ]; then
+                # Top Edge Trigger -> Maximize Fullscreen
+                /usr/bin/mitra-snap max >/dev/null 2>&1
+                sleep 0.4
+            fi
+
+            # 3. SCREEN BOUNDARY CLAMPING (Prevent window from flying off-screen)
+            if [ -n "$WIDTH" ] && [ -n "$HEIGHT" ]; then
+                if [ "$X_WIN" -lt 0 ] || [ $(( X_WIN + WIDTH )) -gt "$SCREEN_W" ] ||                    [ "$Y_WIN" -lt "$TOP_Y" ] || [ $(( Y_WIN + HEIGHT )) -gt "$DOCK_Y" ]; then
+                    # Soft clamp if partially outside
+                    /usr/bin/mitra-snap clamp >/dev/null 2>&1
+                fi
+            fi
+        fi
+    fi
+
+    sleep 0.08
+done

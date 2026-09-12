@@ -1,0 +1,13 @@
+#!/bin/bash
+# mitraOS macOS-Style Animated Bootsplash Engine
+echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+setterm -cursor off > /dev/tty1 2>/dev/null || true
+
+# Play smooth progress animation (0% -> 100%)
+if [ -d /usr/share/mitraos/bootframes ]; then
+    for frame in /usr/share/mitraos/bootframes/frame_*.raw; do
+        [ -f "$frame" ] || continue
+        cat "$frame" > /dev/fb0 2>/dev/null
+        usleep 90000
+    done
+fi

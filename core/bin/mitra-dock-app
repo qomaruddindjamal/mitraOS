@@ -1,0 +1,139 @@
+#!/bin/bash
+# MitraOS Dynamic Dock Application Manager
+export PATH="/boot/mitra:/boot/apollo:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+CONF_DIR="/etc/mitraos"
+CONF_FILE="$CONF_DIR/dock_apps.conf"
+JWMRC="/root/.jwmrc"
+SYS_JWMRC="/etc/jwm/system.jwmrc"
+
+mkdir -p "$CONF_DIR"
+[ ! -f "$CONF_FILE" ] && touch "$CONF_FILE"
+
+is_pinned() {
+    local app_id="$1"
+    grep -q "^${app_id}|" "$CONF_FILE" 2>/dev/null
+}
+
+pin_app() {
+    local app_id="$1"
+    local name="$2"
+    local icon="$3"
+    local cmd="$4"
+
+    if is_pinned "$app_id"; then
+        [ -t 0 ] && whiptail --title "Dock MitraOS" --msgbox "Aplikasi '$name' sudah ada di Dock." 10 50
+        return 0
+    fi
+
+    echo "${app_id}|${name}|${icon}|${cmd}" >> "$CONF_FILE"
+    sync_dock
+    [ -t 0 ] && whiptail --title "Sukses" --msgbox "Aplikasi '$name' berhasil ditambahkan ke Dock!" 10 55
+}
+
+unpin_app() {
+    local app_id="$1"
+    local name="$2"
+    [ -z "$name" ] && name="$app_id"
+
+    if ! is_pinned "$app_id"; then
+        [ -t 0 ] && whiptail --title "Dock MitraOS" --msgbox "Aplikasi '$name' tidak ada di Dock." 10 50
+        return 0
+    fi
+
+    sed -i "/^${app_id}|/d" "$CONF_FILE"
+    sync_dock
+    [ -t 0 ] && whiptail --title "Sukses" --msgbox "Aplikasi '$name' berhasil dihapus dari Dock." 10 55
+}
+
+toggle_app() {
+    local app_id="$1"
+    local name="$2"
+    local icon="$3"
+    local cmd="$4"
+
+    if is_pinned "$app_id"; then
+        unpin_app "$app_id" "$name"
+    else
+        pin_app "$app_id" "$name" "$icon" "$cmd"
+    fi
+}
+
+sync_dock() {
+    # Count pinned apps
+    local count=0
+    local pinned_xml=""
+    
+    while IFS='|' read -r aid aname aicon acmd; do
+        [ -z "$aid" ] && continue
+        count=$(( count + 1 ))
+        pinned_xml="${pinned_xml}        <TrayButton icon=\"${aicon}\" popup=\"${aname}\">exec:${acmd}</TrayButton>\n        <Spacer width=\"8\"/>\n"
+    done < "$CONF_FILE"
+
+    # Dynamic width based on pinned apps and active windows
+    local active=$(ps aux | grep -c '[x]term')
+    local w=$(( 238 + count * 44 + active * 44 ))
+    local x=$(( (1024 - w) / 2 ))
+
+    # Keep autohide setting
+    local autohide="off"
+    grep 'y="-8"' "$JWMRC" 2>/dev/null | grep -q 'autohide="bottom"' && autohide="bottom"
+
+    # Generate complete floating dock Tray XML without text Apps button
+    local dock_block="    <!-- FLOATING DOCK (Bottom Centered) -->\n    <Tray x=\"${x}\" y=\"-8\" width=\"${w}\" height=\"38\" autohide=\"${autohide}\">\n        <Spacer width=\"10\"/>\n        <TrayButton icon=\"/usr/share/mitraos/workstation_dock.png\" popup=\"Workstation\">exec:/usr/bin/mitra-terminal</TrayButton>\n        <Spacer width=\"10\"/>\n        <TrayButton icon=\"/usr/share/mitraos/control_center.png\" popup=\"Control Center\">exec:/usr/bin/mitra-terminal -e /boot/apollo/mitra</TrayButton>\n        <Spacer width=\"10\"/>\n"
+
+    if [ -n "$pinned_xml" ]; then
+        dock_block="${dock_block}        <!-- PINNED APPS (DYNAMIC) -->\n${pinned_xml}"
+    fi
+
+    dock_block="${dock_block}        <!-- SEPARATOR 1: DI DEPAN APLIKASI AKTIF -->\n        <TrayButton icon=\"/usr/share/mitraos/dock_separator.png\" popup=\"Pengaturan Dock (Klik Kanan)\">\n            <Button mask=\"3\">root:l</Button>\n            <Button mask=\"1\">root:l</Button>\n        </TrayButton>\n        <Spacer width=\"8\"/>\n\n        <!-- APLIKASI AKTIF (TASKLIST) -->\n        <TaskList labeled=\"false\" maxwidth=\"36\"/>\n        <Spacer width=\"8\"/>\n\n        <!-- SEPARATOR 2: SETELAH APLIKASI AKTIF -->\n        <TrayButton icon=\"/usr/share/mitraos/dock_separator.png\" popup=\"Pengaturan Dock (Klik Kanan)\">\n            <Button mask=\"3\">root:l</Button>\n            <Button mask=\"1\">root:l</Button>\n        </TrayButton>\n        <Spacer width=\"8\"/>\n        <TrayButton icon=\"/usr/share/mitraos/folder_group.png\" popup=\"Kelompok Folder (Downloads, Documents, Pictures, Videos)\">root:k</TrayButton>\n        <Spacer width=\"10\"/>\n        <TrayButton icon=\"/usr/share/mitraos/trash.png\" popup=\"Trash (Tempat Sampah)\">root:j</TrayButton>\n        <Spacer width=\"10\"/>\n    </Tray>"
+
+    # Replace Floating Dock block in $JWMRC cleanly via awk
+    echo -e "$dock_block" > /tmp/new_dock_tray.xml
+
+    awk '
+    /<!-- FLOATING DOCK \(Bottom Centered\) -->/ {
+        while ((getline line < "/tmp/new_dock_tray.xml") > 0) {
+            print line
+        }
+        close("/tmp/new_dock_tray.xml")
+        skip=1
+        next
+    }
+    skip && /<\/Tray>/ {
+        skip=0
+        next
+    }
+    !skip { print }
+    ' "$JWMRC" > "${JWMRC}.new" && mv "${JWMRC}.new" "$JWMRC"
+
+    cp "$JWMRC" "$SYS_JWMRC" 2>/dev/null || true
+    DISPLAY=:0 jwm -restart 2>/dev/null || true
+}
+
+ACTION="$1"
+shift
+
+case "$ACTION" in
+    pin)
+        pin_app "$@"
+        ;;
+    unpin)
+        unpin_app "$@"
+        ;;
+    toggle)
+        toggle_app "$@"
+        ;;
+    is_pinned)
+        is_pinned "$1"
+        ;;
+    sync)
+        sync_dock
+        ;;
+    list)
+        cat "$CONF_FILE"
+        ;;
+    *)
+        echo "Usage: mitra-dock-app {pin|unpin|toggle|is_pinned|sync|list} [args...]"
+        ;;
+esac

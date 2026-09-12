@@ -1,0 +1,41 @@
+#!/bin/bash
+# mitraOS Terminal Emulator Launcher
+# High-fidelity monospace terminal with scrollback buffer and modern theme
+
+if fc-list : family 2>/dev/null | grep -q "DejaVu Sans Mono"; then
+    FONT_OPT=(-fa "DejaVu Sans Mono" -fs 10)
+else
+    FONT_OPT=()
+fi
+
+if [ "$#" -gt 0 ]; then
+    exec /usr/bin/xterm \
+        "${FONT_OPT[@]}" \
+        -geometry 96x28+35+35 \
+        -bg '#0a0e17' \
+        -fg '#e2e8f0' \
+        -cr '#00f2fe' \
+        -ms '#00f2fe' \
+        -bd '#00f2fe' \
+        -b 1 \
+        -sb -sl 2000 \
+        -title 'mitraOS Terminal' \
+        -name 'mitra-terminal' \
+        -class 'XTerm' \
+        "$@"
+else
+    exec /usr/bin/xterm \
+        "${FONT_OPT[@]}" \
+        -geometry 96x28+35+35 \
+        -bg '#0a0e17' \
+        -fg '#e2e8f0' \
+        -cr '#00f2fe' \
+        -ms '#00f2fe' \
+        -bd '#00f2fe' \
+        -b 1 \
+        -sb -sl 2000 \
+        -title 'mitraOS Terminal' \
+        -name 'mitra-terminal' \
+        -class 'XTerm' \
+        -e /bin/bash --login
+fi
