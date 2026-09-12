@@ -8,12 +8,28 @@
 	#//////////////////////////////////////////////////////////////////
 
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-	if [[ -f "$SCRIPT_DIR/../lib/mitra-globals" ]]; then
-		. "$SCRIPT_DIR/../lib/mitra-globals"
-	elif [[ -f '/opt/mitraos/lib/mitra-globals' ]]; then
-		. '/opt/mitraos/lib/mitra-globals'
-	elif [[ -f '/boot/mitraos/func/mitra-globals' ]]; then
-		. '/boot/mitraos/func/mitra-globals'
+	for g_lib in "$SCRIPT_DIR/../lib/mitra-globals" \
+	             "/opt/mitraos/lib/mitra-globals" \
+	             "/boot/apollo/func/mitra-globals" \
+	             "/boot/apollo/mitra-globals" \
+	             "/boot/mitraos/func/mitra-globals" \
+	             "/usr/lib/mitraos/mitra-globals" \
+	             "/usr/share/mitraos/mitra-globals"; do
+		if [[ -f "$g_lib" ]]; then
+			. "$g_lib"
+			break
+		fi
+	done
+
+	# Safe Fallbacks if running standalone
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-16}" "${4:-74}" 2>/dev/null || echo -e "[$1]\n$2\n"; }
+	fi
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_EXIT_BANNER >/dev/null 2>&1; then
+		G_EXIT_BANNER() { clear; }
 	fi
 
 	G_PROGRAM_NAME='MitraOS - System Preferences'
@@ -245,30 +261,30 @@
 	while true; do
 		local sel
 		sel=$(whiptail --title "MitraOS V.1 - System Preferences" --menu "Pilih kategori preferensi sistem:" 22 76 14 \
-			"01" "🖥️  Appearance (Theme, Dark Mode, Icons, Fonts, Wallpaper)" \
-			"02" "🖥️  Display (Resolution, Scale, Multiple Displays)" \
-			"03" "🖱️  Mouse & Touchpad (Speed, Scrolling, Gestures)" \
-			"04" "⌨️  Keyboard (Layout, Input Method, Shortcuts)" \
-			"05" "🌐  Network (Wi-Fi, Ethernet, DNS, Firewall)" \
-			"06" "🔊  Sound (Volume, Output, Input, Effects)" \
-			"07" "🔵  Bluetooth (Devices, Pair, Settings)" \
-			"08" "🖨️  Printers & Devices (Printers, Scanners, USB)" \
-			"09" "👤  Users & Accounts (Users, Passwords, Admin)" \
-			"10" "🔐  Privacy & Security (Permissions, Firewall, Updates)" \
-			"11" "🔄  Software & Updates (Repositories, Software Center)" \
-			"12" "💾  Storage (Disks, Partitions, Mounts, Usage)" \
-			"13" "⚡  Power (Battery, Profiles, Sleep, Hibernate)" \
-			"14" "🗓️  Date & Time (Timezone, NTP, Clock)" \
-			"15" "🌍  Language & Region (Language, Locale, Formats)" \
-			"16" "🖥️  Desktop (macOS / Win11 Styles, Dock, Panel)" \
-			"17" "🪟  Windows (Snap Layout, Behavior, Traffic Lights)" \
-			"18" "🚀  Startup (Auto-start Apps, Daemons, Services)" \
-			"19" "♿  Accessibility (Large Text, High Contrast, Screen Reader)" \
-			"20" "📂  File Manager (Folders, Thumbnails, Hidden Files)" \
-			"21" "🔔  Notifications (Banners, Do Not Disturb, Position)" \
-			"22" "🔑  Default Applications (Browser, Mail, Player, Terminal)" \
-			"23" "ℹ️  System (About MitraOS, Hardware, Kernel, License)" \
-			"X"  "🚪 Keluar ke Terminal" 3>&1 1>&2 2>&3)
+			"01" "Appearance (Theme, Dark Mode, Icons, Fonts, Wallpaper)" \
+			"02" "Display (Resolution, Scale, Multiple Displays)" \
+			"03" "Mouse & Touchpad (Speed, Scrolling, Gestures)" \
+			"04" "Keyboard (Layout, Input Method, Shortcuts)" \
+			"05" "Network (Wi-Fi, Ethernet, DNS, Firewall)" \
+			"06" "Sound (Volume, Output, Input, Effects)" \
+			"07" "Bluetooth (Devices, Pair, Settings)" \
+			"08" "Printers & Devices (Printers, Scanners, USB)" \
+			"09" "Users & Accounts (Users, Passwords, Admin)" \
+			"10" "Privacy & Security (Permissions, Firewall, Updates)" \
+			"11" "Software & Updates (Repositories, Software Center)" \
+			"12" "Storage (Disks, Partitions, Mounts, Usage)" \
+			"13" "Power (Battery, Profiles, Sleep, Hibernate)" \
+			"14" "Date & Time (Timezone, NTP, Clock)" \
+			"15" "Language & Region (Language, Locale, Formats)" \
+			"16" "Desktop (macOS / Win11 Styles, Dock, Panel)" \
+			"17" "Windows (Snap Layout, Behavior, Traffic Lights)" \
+			"18" "Startup (Auto-start Apps, Daemons, Services)" \
+			"19" "Accessibility (Large Text, High Contrast, Screen Reader)" \
+			"20" "File Manager (Folders, Thumbnails, Hidden Files)" \
+			"21" "Notifications (Banners, Do Not Disturb, Position)" \
+			"22" "Default Applications (Browser, Mail, Player, Terminal)" \
+			"23" "System Info (About MitraOS, Hardware, Kernel, License)" \
+			"X"  "Keluar ke Terminal" 3>&1 1>&2 2>&3)
 		
 		[[ -z "$sel" || "$sel" == "X" ]] && break
 

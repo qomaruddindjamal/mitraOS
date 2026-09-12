@@ -1,0 +1,395 @@
+#!/bin/bash
+# shellcheck disable=SC2034,SC2154
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS Core System Framework & Globals Library
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Multi-Hardware Detection, Ultra-Low RAM Optimization,
+	# Modern TUI Styling (NEWT_COLORS) & Shared Utilities.
+	# Supports: Pentium 4 (i686/i386), x86_64, ARM64, ARMhf, VMs.
+	#//////////////////////////////////////////////////////////////////
+
+	# Ensure script is run with bash
+	[[ -n $BASH_VERSION ]] || { echo "MitraOS scripts require Bash."; exit 1; }
+
+	# Script/Program metadata defaults
+	[[ -n $G_PROGRAM_NAME ]] || G_PROGRAM_NAME='MitraOS'
+
+	# Non-interactive detection
+	[[ $G_INTERACTIVE == [01] ]] || { [[ -t 0 ]] && G_INTERACTIVE=1 || G_INTERACTIVE=0; }
+
+	# Version Information
+	MITRA_VERSION_MAJOR=1
+	MITRA_VERSION_MINOR=0
+	MITRA_VERSION_PATCH=0
+	MITRA_VERSION_STRING="${MITRA_VERSION_MAJOR}.${MITRA_VERSION_MINOR}.${MITRA_VERSION_PATCH}"
+	MITRA_CODENAME="Apollo"
+	MITRA_FOUNDER="Qomaruddin Djamal"
+	MITRA_ORGANIZATION="Citra Media Technology & Mitra Utama Group"
+
+	# Backward Compatibility Aliases for Apollo
+	APOLLO_VERSION_MAJOR=$MITRA_VERSION_MAJOR
+	APOLLO_VERSION_MINOR=$MITRA_VERSION_MINOR
+	APOLLO_VERSION_PATCH=$MITRA_VERSION_PATCH
+	APOLLO_VERSION_STRING=$MITRA_VERSION_STRING
+	APOLLO_CODENAME=$MITRA_CODENAME
+
+	# Dynamic Base Directory Discovery
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	if [[ -d '/opt/mitraos' ]]; then
+		FP_MITRA_DIR='/opt/mitraos'
+	elif [[ -d '/boot/mitraos' ]]; then
+		FP_MITRA_DIR='/boot/mitraos'
+	elif [[ -d "$SCRIPT_DIR/../bin" ]]; then
+		FP_MITRA_DIR="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+	elif [[ -d '/boot/apollo' ]]; then
+		FP_MITRA_DIR='/boot/apollo'
+	else
+		FP_MITRA_DIR='/opt/mitraos'
+	fi
+
+	FP_APOLLO_DIR="$FP_MITRA_DIR"
+	FP_MITRA_CONFIG='/boot/mitra.txt'
+	[[ -f $FP_MITRA_CONFIG ]] || FP_MITRA_CONFIG='/boot/apollo.txt'
+	FP_APOLLO_CONFIG="$FP_MITRA_CONFIG"
+
+	FP_MITRA_INSTALL_STAGE="$FP_MITRA_DIR/.install_stage"
+	FP_APOLLO_INSTALL_STAGE="$FP_MITRA_INSTALL_STAGE"
+	FP_MITRA_VERSION="$FP_MITRA_DIR/.version"
+	FP_APOLLO_VERSION="$FP_MITRA_VERSION"
+	FP_MITRA_HW_MODEL="$FP_MITRA_DIR/.hw_model"
+	FP_APOLLO_HW_MODEL="$FP_MITRA_HW_MODEL"
+
+	# Modern ANSI Color Palette (Neon Cyan & Radiant Amber)
+	C_RESET='\e[0m'
+	C_BOLD='\e[1m'
+	C_DIM='\e[2m'
+	C_ITALIC='\e[3m'
+	C_UNDERLINE='\e[4m'
+
+	# Core Brand Colors
+	C_ORANGE='\e[38;5;208m'
+	C_ORANGE_BOLD='\e[1;38;5;208m'
+	C_AMBER='\e[38;5;214m'
+	C_CYAN='\e[38;5;45m'
+	C_CYAN_BOLD='\e[1;38;5;45m'
+	C_ELECTRIC_BLUE='\e[38;5;39m'
+	C_BLUE_BOLD='\e[1;38;5;33m'
+	C_PURPLE='\e[38;5;141m'
+
+	# Semantic Status Colors
+	C_GREEN='\e[38;5;82m'
+	C_GREEN_BOLD='\e[1;38;5;82m'
+	C_RED='\e[38;5;196m'
+	C_RED_BOLD='\e[1;38;5;196m'
+	C_YELLOW='\e[38;5;220m'
+	C_YELLOW_BOLD='\e[1;38;5;220m'
+	C_GREY='\e[38;5;244m'
+	C_DARK_GREY='\e[38;5;238m'
+	C_WHITE='\e[1;37m'
+
+	#-----------------------------------------------------------------------------------
+	# Modern Dark Slate & Neon Cyan/Orange TUI Theme (whiptail / dialog)
+	# Transforms classic 90s blue dialogs into a sleek, modern, high-contrast dark UI.
+	#-----------------------------------------------------------------------------------
+	export NEWT_COLORS='
+root=white,black
+window=white,#1e222b
+border=#00d2ff,#1e222b
+shadow=black,black
+title=#ff6f00,#1e222b
+button=white,#005f87
+actbutton=white,#ff6f00
+compactbutton=white,#005f87
+checkbox=white,#1e222b
+actcheckbox=#ff6f00,#1e222b
+entry=white,#2d3340
+label=white,#1e222b
+listbox=white,#1e222b
+actlistbox=white,#005f87
+sellistbox=white,#2d3340
+actsellistbox=white,#ff6f00
+textbox=white,#1e222b
+acttextbox=white,#005f87
+emptyscale=black,#2d3340
+fullscale=white,#00d2ff
+helpline=white,#1e222b
+roottext=white,black
+'
+
+	#-----------------------------------------------------------------------------------
+	# Notification & Logging Functions
+	#-----------------------------------------------------------------------------------
+	G_MITRA_NOTIFY()
+	{
+		# $1 = Status (0: Info, 1: Success, 2: Warning, 3: Error, -1: Banner step)
+		# $2 = Message
+		local status=$1
+		local msg=$2
+
+		case $status in
+			0) echo -e "  [${C_CYAN}INFO${C_RESET}] $msg" ;;
+			1) echo -e "  [${C_GREEN}OK${C_RESET}] $msg" ;;
+			2) echo -e "  [${C_YELLOW}WARN${C_RESET}] $msg" ;;
+			3) echo -e "  [${C_RED}ERROR${C_RESET}] $msg" >&2 ;;
+			-1) echo -e "\n${C_ORANGE_BOLD}==>${C_RESET} ${C_BOLD}$msg${C_RESET}" ;;
+			*) echo -e "  $msg" ;;
+		esac
+	}
+
+	# Backward compatible notification alias
+	G_APOLLO-NOTIFY()
+	{
+		G_MITRA_NOTIFY "$@"
+	}
+
+	# Exit with formatted error
+	G_ERROR_EXIT()
+	{
+		local msg=${1:-"Terjadi kesalahan kritis"}
+		local code=${2:-1}
+		G_MITRA_NOTIFY 3 "$msg"
+		exit "$code"
+	}
+
+	# Verify Root Privileges
+	G_CHECK_ROOT_USER()
+	{
+		if (( UID != 0 )); then
+			if [ -x /bin/sudo ]; then
+				exec /bin/sudo "$0" "$@"
+			elif [ -x "$FP_MITRA_DIR/sudo" ]; then
+				exec "$FP_MITRA_DIR/sudo" "$0" "$@"
+			elif [ -x /usr/bin/sudo ]; then
+				exec /usr/bin/sudo "$0" "$@"
+			fi
+			echo -e "\n${C_RED}[ERROR]${C_RESET} Hak akses root diperlukan. Jalankan dengan ${C_BOLD}sudo${C_RESET}."
+			exit 1
+		fi
+	}
+
+	# Execute command with status indicator
+	G_EXEC()
+	{
+		local cmd_str="$*"
+		G_MITRA_NOTIFY 0 "Menjalankan: ${C_DIM}${cmd_str}${C_RESET}"
+		"$@"
+		local exit_code=$?
+		if (( exit_code != 0 )); then
+			G_MITRA_NOTIFY 3 "Perintah gagal (kode keluar $exit_code): $cmd_str"
+			return $exit_code
+		fi
+		return 0
+	}
+
+	# Execute command quietly unless it fails
+	G_EXEC_QUIET()
+	{
+		local output
+		output=$("$@" 2>&1)
+		local exit_code=$?
+		if (( exit_code != 0 )); then
+			G_MITRA_NOTIFY 3 "Perintah gagal (kode keluar $exit_code): $*"
+			echo "$output" >&2
+			return $exit_code
+		fi
+		return 0
+	}
+
+	#-----------------------------------------------------------------------------------
+	# Multi-Hardware Architecture & Platform Detection
+	# Supports: Pentium 4 / 32-bit Legacy, x86_64, ARM64, ARMhf, Virtual Machines.
+	#-----------------------------------------------------------------------------------
+	G_OBTAIN_HW_INFO()
+	{
+		G_HW_ARCH_NAME=$(busybox uname -m 2>/dev/null || uname -m 2>/dev/null || echo "x86_64")
+		G_HW_ICON="💻"
+		G_HW_IS_LOW_SPEC=0
+
+		# 1. Architecture categorization
+		case $G_HW_ARCH_NAME in
+			'i386'|'i486'|'i586'|'i686')
+				G_HW_ARCH='i686'
+				G_HW_ARCH_DESC='32-bit x86 (Legacy / Pentium 4)'
+				G_HW_ICON="💾"
+				G_HW_IS_LOW_SPEC=1
+				;;
+			'x86_64'|'amd64')
+				G_HW_ARCH='x86_64'
+				G_HW_ARCH_DESC='64-bit x86 PC / Server'
+				G_HW_ICON="🖥️"
+				;;
+			'aarch64'|'arm64')
+				G_HW_ARCH='aarch64'
+				G_HW_ARCH_DESC='64-bit ARM (ARMv8 / AArch64)'
+				G_HW_ICON="🍓"
+				;;
+			'armv7l'|'armhf'|'armv6l')
+				G_HW_ARCH='armhf'
+				G_HW_ARCH_DESC='32-bit ARM (ARMv6/v7)'
+				G_HW_ICON="🍓"
+				G_HW_IS_LOW_SPEC=1
+				;;
+			'riscv64')
+				G_HW_ARCH='riscv64'
+				G_HW_ARCH_DESC='64-bit RISC-V'
+				G_HW_ICON="⚡"
+				;;
+			*)
+				G_HW_ARCH='unknown'
+				G_HW_ARCH_DESC="$G_HW_ARCH_NAME"
+				G_HW_ICON="💻"
+				;;
+		esac
+
+		# 2. Detailed Hardware Model & CPU Name
+		G_HW_CPU_MODEL=""
+		if [[ -f '/proc/cpuinfo' ]]; then
+			G_HW_CPU_MODEL=$(grep -m 1 'model name' /proc/cpuinfo 2>/dev/null | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+			[[ -n $G_HW_CPU_MODEL ]] || G_HW_CPU_MODEL=$(grep -m 1 'Hardware' /proc/cpuinfo 2>/dev/null | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+		fi
+		[[ -n $G_HW_CPU_MODEL ]] || G_HW_CPU_MODEL="Standard Processor"
+
+		# Flag Pentium 4 specifically
+		if echo "$G_HW_CPU_MODEL" | grep -qiE 'pentium\(r\) 4|pentium 4|celeron'; then
+			G_HW_IS_LOW_SPEC=1
+			G_HW_ICON="💾"
+		fi
+
+		# 3. Detect Platform / Board Model
+		if [[ -f '/proc/device-tree/model' ]]; then
+			G_HW_MODEL_NAME=$(tr -d '\0' < /proc/device-tree/model)
+			if echo "$G_HW_MODEL_NAME" | grep -qi 'Raspberry Pi'; then
+				G_HW_ICON="🍓"
+			elif echo "$G_HW_MODEL_NAME" | grep -qi 'Orange Pi'; then
+				G_HW_ICON="🍊"
+			fi
+		elif grep -q 'Raspberry Pi' /proc/cpuinfo 2>/dev/null; then
+			G_HW_MODEL_NAME=$(grep -m 1 'Model' /proc/cpuinfo | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+			G_HW_ICON="🍓"
+		elif command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q 2>/dev/null; then
+			local virt_type
+			virt_type=$(systemd-detect-virt 2>/dev/null)
+			G_HW_MODEL_NAME="Virtual Machine (${virt_type})"
+			G_HW_ICON="☁️"
+		else
+			if (( G_HW_IS_LOW_SPEC == 1 )); then
+				G_HW_MODEL_NAME="Legacy Low-Spec PC ($G_HW_CPU_MODEL)"
+			else
+				G_HW_MODEL_NAME="PC / Bare Metal ($G_HW_CPU_MODEL)"
+			fi
+		fi
+
+		# 4. Total System RAM & Low-Spec Evaluation
+		G_HW_RAM_MB=0
+		if [[ -f '/proc/meminfo' ]]; then
+			G_HW_RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+			if (( G_HW_RAM_MB > 0 && G_HW_RAM_MB <= 1024 )); then
+				G_HW_IS_LOW_SPEC=1
+			fi
+		fi
+
+		# 5. Check ZRAM Status
+		G_HW_ZRAM_ACTIVE=0
+		if grep -q 'zram' /proc/swaps 2>/dev/null; then
+			G_HW_ZRAM_ACTIVE=1
+		fi
+	}
+
+	# Initialize Hardware Info
+	G_OBTAIN_HW_INFO
+
+	#-----------------------------------------------------------------------------------
+	# TUI Whiptail / Dialog Helpers
+	#-----------------------------------------------------------------------------------
+	if command -v whiptail >/dev/null 2>&1; then
+		TUI_TOOL='whiptail'
+	elif command -v dialog >/dev/null 2>&1; then
+		TUI_TOOL='dialog'
+	elif [[ -x "$FP_MITRA_DIR/whiptail" ]]; then
+		TUI_TOOL="$FP_MITRA_DIR/whiptail"
+	elif [[ -x "$FP_MITRA_DIR/dialog" ]]; then
+		TUI_TOOL="$FP_MITRA_DIR/dialog"
+	elif [[ -x '/boot/apollo/whiptail' ]]; then
+		TUI_TOOL='/boot/apollo/whiptail'
+	else
+		TUI_TOOL='none'
+	fi
+
+	G_WHIP_MSG()
+	{
+		local title=${1:-"$G_PROGRAM_NAME"}
+		local message=$2
+		local height=${3:-14}
+		local width=${4:-72}
+
+		if [[ $TUI_TOOL == 'whiptail' ]]; then
+			whiptail --title "$title" --msgbox "$message" "$height" "$width"
+		elif [[ $TUI_TOOL == 'dialog' ]]; then
+			dialog --title "$title" --msgbox "$message" "$height" "$width"
+		else
+			echo -e "\n=== $title ===\n$message\n"
+			read -r -p "Tekan Enter untuk melanjutkan..."
+		fi
+	}
+
+	G_WHIP_YESNO()
+	{
+		local title=${1:-"$G_PROGRAM_NAME"}
+		local message=$2
+		local height=${3:-14}
+		local width=${4:-72}
+
+		if [[ $TUI_TOOL == 'whiptail' ]]; then
+			whiptail --title "$title" --yesno "$message" "$height" "$width"
+			return $?
+		elif [[ $TUI_TOOL == 'dialog' ]]; then
+			dialog --title "$title" --yesno "$message" "$height" "$width"
+			return $?
+		else
+			echo -e "\n=== $title ===\n$message"
+			read -r -p "Konfirmasi? (y/N): " choice
+			[[ $choice =~ ^[Yy]$ ]] && return 0 || return 1
+		fi
+	}
+
+	# Package installer helper (with noninteractive and no-recommends for low disk)
+	G_AGI()
+	{
+		local packages=("$@")
+		G_MITRA_NOTIFY -1 "Memasang paket: ${packages[*]}"
+		DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install "${packages[@]}"
+	}
+
+	# Package purge helper
+	G_AGP()
+	{
+		local packages=("$@")
+		G_MITRA_NOTIFY -1 "Menghapus paket: ${packages[*]}"
+		DEBIAN_FRONTEND=noninteractive apt-get -y purge "${packages[@]}"
+		DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge
+	}
+
+	#-----------------------------------------------------------------------------------
+	# Exit handler: displays MitraOS Telemetry Banner when returning to main terminal
+	#-----------------------------------------------------------------------------------
+	G_EXIT_BANNER()
+	{
+		(( BASH_SUBSHELL > 0 )) && return 0
+		[[ -n "$MITRA_INSIDE_LAUNCHER" ]] && return 0
+		[[ "$0" == *"mitra-banner"* ]] && return 0
+
+		if command -v mitra-banner >/dev/null 2>&1; then
+			mitra-banner
+		elif [[ -x "$FP_MITRA_DIR/mitra-banner" ]]; then
+			"$FP_MITRA_DIR/mitra-banner"
+		elif [[ -x "$FP_MITRA_DIR/bin/mitra-banner" ]]; then
+			"$FP_MITRA_DIR/bin/mitra-banner"
+		elif [[ -x '/boot/apollo/mitra-banner' ]]; then
+			/boot/apollo/mitra-banner
+		else
+			clear 2>/dev/null || printf '\033[2J\033[H'
+		fi
+	}
+}

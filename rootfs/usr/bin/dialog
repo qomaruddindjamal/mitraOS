@@ -131,6 +131,7 @@ while (( i < ${#args[@]} )); do
             done
             echo ""
             echo -e "\033[1;38;5;208m==============================================================================\033[0m"
+            read -t 0.1 -n 10000 _discard 2>/dev/null || true
             while true; do
                 echo -n "Pilihan Anda: "
                 read -r user_choice
