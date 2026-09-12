@@ -1,0 +1,72 @@
+# ===================================================================
+# MitraOS Foundational Base Packages Manifest
+# ===================================================================
+# Paket-paket fondasi dasar sistem MitraOS (Essential Base System).
+# Digunakan saat debootstrap, rootfs build, dan instalasi minimal.
+# ===================================================================
+
+# --- Shells ---
+sh
+bash
+dash
+
+# --- Core Utilities & Text Processing ---
+coreutils
+util-linux
+findutils
+grep
+sed
+gawk
+diffutils
+procps
+psmisc
+
+# --- Package Management & Security Keys ---
+apt
+apt-utils
+dpkg
+debconf
+ca-certificates
+gnupg
+gnupg-utils
+gpgv
+debian-archive-keyring
+
+# --- Networking & Downloaders ---
+curl
+wget
+iproute2
+iputils-ping
+isc-dhcp-client
+
+# --- Archiving & Compression ---
+tar
+gzip
+bzip2
+xz-utils
+zstd
+
+# --- User Management, Auth & Privileges ---
+sudo
+passwd
+login
+adduser
+addgroup
+
+# --- Init System & Hardware Daemons ---
+systemd
+systemd-sysv
+systemd-resolved
+udev
+dbus
+
+# --- Disk Partitioning & Filesystem Tools ---
+mount
+e2fsprogs
+fdisk
+parted
+lsblk
+blkid
+
+# --- Text Editor ---
+nano

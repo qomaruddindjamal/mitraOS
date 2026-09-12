@@ -1,0 +1,50 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - System & Package Updater
+	#//////////////////////////////////////////////////////////////////
+
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Updater'
+	G_CHECK_ROOT_USER "$@"
+
+	G_APOLLO-NOTIFY -1 "Checking for Debian package updates..."
+	apt-get update
+	G_APOLLO-NOTIFY -1 "Upgrading system packages..."
+	DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade --no-install-recommends
+	G_APOLLO-NOTIFY 1 "Apollo OS system packages successfully updated."
+	G_WHIP_MSG "Update Completed" "Apollo OS and Debian system packages have been updated."
+
+	G_EXIT_BANNER
+}

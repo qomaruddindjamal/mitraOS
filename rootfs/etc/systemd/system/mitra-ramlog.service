@@ -1,0 +1,11 @@
+[Unit]
+Description=MitraOS RAMLog Tmpfs Protection
+Before=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "mount -t tmpfs -o size=64m,noatime,mode=0755 tmpfs /var/log"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=basic.target

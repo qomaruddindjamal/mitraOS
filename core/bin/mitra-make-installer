@@ -1,0 +1,347 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Bootable Installer Media Creator
+	# Location: /boot/apollo/mitra-make-installer
+	#//////////////////////////////////////////////////////////////////
+	# Creates bootable USB flash drive / MicroSD installer media with:
+	# - UEFI Mode (GPT + ESP FAT32) for modern PCs and laptops
+	# - Legacy BIOS Mode (MBR) for Intel Pentium 4 & vintage PCs
+	# - Hybrid Universal Dual-Boot (BIOS + UEFI) for all hardware
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Installer Media Creator'
+	G_CHECK_ROOT_USER "$@"
+
+	# Detect currently mounted root device to prevent self-overwriting
+	ROOT_DISK=$(findmnt -n -o SOURCE / | sed -r 's/p?[0-9]+$//')
+
+	# Discover candidate removable/target USB & MicroSD drives
+	list_target_drives()
+	{
+		lsblk -d -n -o NAME,SIZE,TYPE,MODEL,TRAN | grep 'disk' | while read -r line; do
+			local d_name
+			d_name=$(echo "$line" | awk '{print $1}')
+			local d_dev="/dev/$d_name"
+			# Exclude running root disk
+			if [[ "$d_dev" != "$ROOT_DISK" ]]; then
+				echo "$line"
+			fi
+		done
+	}
+
+	# Detect storage media characteristics
+	detect_media_type()
+	{
+		local dev=$1
+		local name
+		name=$(basename "$dev")
+
+		if [[ $name == mmcblk* ]]; then
+			echo "MicroSD / eMMC Flash Storage"
+		elif [[ $name == nvme* ]]; then
+			echo "NVMe High-Speed SSD"
+		elif [[ -f "/sys/block/$name/queue/rotational" ]]; then
+			local rot
+			rot=$(cat "/sys/block/$name/queue/rotational" 2>/dev/null)
+			if (( rot == 1 )); then
+				echo "Hard Disk Drive (HDD Mechanical)"
+			else
+				echo "SATA Solid State Drive (SSD)"
+			fi
+		else
+			echo "USB Flash Drive / Removable Media"
+		fi
+	}
+
+	# 1. Select Destination USB Drive / MicroSD Card
+	TARGET_CANDIDATES=$(list_target_drives)
+	if [[ -z $TARGET_CANDIDATES ]]; then
+		G_WHIP_MSG "No Available Drives" "No additional target USB or MicroSD drives detected.\n\nPlease plug in a USB Flash Drive or MicroSD Card and run this wizard again."
+		exit 1
+	fi
+
+	MENU_ITEMS=()
+	while read -r line; do
+		[[ -z $line ]] && continue
+		d_name=$(echo "$line" | awk '{print $1}')
+		d_size=$(echo "$line" | awk '{print $2}')
+		d_model=$(echo "$line" | awk '{$1=$2=$3=""; print $0}' | sed 's/^[[:space:]]*//')
+		d_type=$(detect_media_type "/dev/$d_name")
+		MENU_ITEMS+=("/dev/$d_name" "$d_size | $d_type ($d_model)")
+	done <<< "$TARGET_CANDIDATES"
+
+	TARGET_DEV=$($TUI_TOOL --title "Apollo OS - Installer Media Creator" \
+		--menu "Running on: $ROOT_DISK ($G_HW_MODEL_NAME)\nSelect destination USB Drive / MicroSD to turn into a Bootable Installer:" 18 76 6 \
+		"${MENU_ITEMS[@]}" 3>&1 1>&2 2>&3)
+	(( $? != 0 )) && { G_EXIT_BANNER; exit 0; }
+
+	MEDIA_DESC=$(detect_media_type "$TARGET_DEV")
+
+	# 2. Select Bootloader Technology (UEFI vs BIOS vs Hybrid)
+	CURRENT_BOOT="Legacy BIOS"
+	[[ -d /sys/firmware/efi ]] && CURRENT_BOOT="Modern UEFI"
+
+	BOOT_MODE_CHOICE=$($TUI_TOOL --title "Apollo OS - Bootloader Technology" \
+		--menu "Host booted via: $CURRENT_BOOT\nChoose bootloader technology to install on $TARGET_DEV:" 17 76 3 \
+		"1" "UEFI Mode (Pure GPT + ESP)        - Modern PCs, NVMe/SSD, Laptops" \
+		"2" "Legacy BIOS (MBR Partition)       - Pentium 4, Retro PCs, Old HDDs" \
+		"3" "Hybrid Dual-Boot (BIOS + UEFI)    - Universal (Boots on Old AND New PCs)" \
+		3>&1 1>&2 2>&3)
+	(( $? != 0 )) && { G_EXIT_BANNER; exit 0; }
+
+	case $BOOT_MODE_CHOICE in
+		1) BOOT_MODE_NAME="UEFI Mode (GPT + ESP)" ;;
+		2) BOOT_MODE_NAME="Legacy BIOS (MBR)" ;;
+		3) BOOT_MODE_NAME="Hybrid Dual-Boot (BIOS + UEFI Universal)" ;;
+		*) BOOT_MODE_NAME="Hybrid Dual-Boot (BIOS + UEFI Universal)" ;;
+	esac
+
+	# 3. Select Embedded System Profile
+	PROFILE_CHOICE=$($TUI_TOOL --title "Apollo OS - Installer Profile" \
+		--menu "Select the default profile embedded into this installer:" 16 75 3 \
+		"1" "Server Minimal      - Headless, ~25MB RAM, Storage Diet, iRedMail Ready" \
+		"2" "Desktop Ultra-Light - Openbox + Tint2, ~35MB RAM (Pentium 4 Optimized)" \
+		"3" "Desktop Modern Dark - XFCE4 Dark, Arc Dark, Papirus, Modern Aesthetics" \
+		3>&1 1>&2 2>&3)
+	(( $? != 0 )) && { G_EXIT_BANNER; exit 0; }
+
+	case $PROFILE_CHOICE in
+		1) PROFILE_NAME="Server Minimal" ;;
+		2) PROFILE_NAME="Desktop Ultra-Light (Openbox)" ;;
+		3) PROFILE_NAME="Desktop Modern Dark (XFCE4)" ;;
+	esac
+
+	# 4. Confirmation Warning
+	if ! G_WHIP_YESNO "CONFIRM WRITING INSTALLER" \
+		"Target Media: $TARGET_DEV ($MEDIA_DESC)\nBootloader Technology: $BOOT_MODE_NAME\nEmbedded Profile: $PROFILE_NAME\n\nALL EXISTING DATA ON $TARGET_DEV WILL BE PERMANENTLY ERASED!\n\nAre you sure you want to create the Apollo OS bootable installer?"; then
+		G_EXIT_BANNER
+		exit 0
+	fi
+
+	clear
+	echo -e "${C_ORANGE_BOLD}==>${C_RESET} ${C_BOLD}Creating Apollo OS Bootable Installer on $TARGET_DEV ($MEDIA_DESC)...${C_RESET}"
+	echo -e "${C_CYAN}Bootloader Technology: ${BOOT_MODE_NAME}${C_RESET}"
+	echo -e "${C_CYAN}Profile: ${PROFILE_NAME}${C_RESET}\n"
+
+	# Unmount active partitions
+	echo -e "${C_CYAN}Unmounting existing partitions on $TARGET_DEV...${C_RESET}"
+	umount "${TARGET_DEV}"* 2>/dev/null || true
+
+	# Detect architecture for appropriate EFI package and GRUB target
+	ARCH_DETECT=$(uname -m)
+	if [[ $ARCH_DETECT == "i686" || $ARCH_DETECT == "i386" ]]; then
+		EFI_PKG="grub-efi-ia32-bin"
+		EFI_TARGET="i386-efi"
+	elif [[ $ARCH_DETECT == "aarch64" ]]; then
+		EFI_PKG="grub-efi-arm64-bin"
+		EFI_TARGET="arm64-efi"
+	else
+		EFI_PKG="grub-efi-amd64-bin"
+		EFI_TARGET="x86_64-efi"
+	fi
+
+	# Install required tools
+	G_AGI parted dosfstools e2fsprogs rsync grub-pc "$EFI_PKG" 2>/dev/null || true
+
+	# Partitioning based on chosen Boot Mode
+	if [[ $BOOT_MODE_CHOICE == "1" ]]; then
+		# UEFI Mode (GPT Table)
+		echo -e "${C_CYAN}Partitioning $TARGET_DEV for UEFI (GPT Table)...${C_RESET}"
+		parted -s "$TARGET_DEV" mklabel gpt
+		parted -s "$TARGET_DEV" mkpart "APOLLO_ESP" fat32 1MiB 256MiB
+		parted -s "$TARGET_DEV" set 1 esp on
+		parted -s "$TARGET_DEV" mkpart "APOLLO_INST" ext4 256MiB 100%
+
+		if [[ $TARGET_DEV == *nvme* || $TARGET_DEV == *mmcblk* ]]; then
+			ESP_PART="${TARGET_DEV}p1"; ROOT_PART="${TARGET_DEV}p2"
+		else
+			ESP_PART="${TARGET_DEV}1"; ROOT_PART="${TARGET_DEV}2"
+		fi
+
+	elif [[ $BOOT_MODE_CHOICE == "3" ]]; then
+		# Hybrid Dual-Boot (GPT with BIOS boot partition + EFI partition)
+		echo -e "${C_CYAN}Partitioning $TARGET_DEV for Hybrid Dual-Boot (BIOS MBR + Modern UEFI)...${C_RESET}"
+		parted -s "$TARGET_DEV" mklabel gpt
+		parted -s "$TARGET_DEV" mkpart "BIOS_BOOT" 1MiB 3MiB
+		parted -s "$TARGET_DEV" set 1 bios_grub on
+		parted -s "$TARGET_DEV" mkpart "APOLLO_ESP" fat32 3MiB 260MiB
+		parted -s "$TARGET_DEV" set 2 esp on
+		parted -s "$TARGET_DEV" mkpart "APOLLO_INST" ext4 260MiB 100%
+
+		if [[ $TARGET_DEV == *nvme* || $TARGET_DEV == *mmcblk* ]]; then
+			ESP_PART="${TARGET_DEV}p2"; ROOT_PART="${TARGET_DEV}p3"
+		else
+			ESP_PART="${TARGET_DEV}2"; ROOT_PART="${TARGET_DEV}3"
+		fi
+
+	else
+		# Legacy BIOS Mode (MBR Table)
+		echo -e "${C_CYAN}Partitioning $TARGET_DEV for Legacy BIOS (MBR Table - Pentium 4)...${C_RESET}"
+		parted -s "$TARGET_DEV" mklabel msdos
+		parted -s "$TARGET_DEV" mkpart primary fat32 1MiB 256MiB
+		parted -s "$TARGET_DEV" set 1 boot on
+		parted -s "$TARGET_DEV" mkpart primary ext4 256MiB 100%
+
+		if [[ $TARGET_DEV == *nvme* || $TARGET_DEV == *mmcblk* ]]; then
+			ESP_PART="${TARGET_DEV}p1"; ROOT_PART="${TARGET_DEV}p2"
+		else
+			ESP_PART="${TARGET_DEV}1"; ROOT_PART="${TARGET_DEV}2"
+		fi
+	fi
+
+	# Format Partitions
+	echo -e "${C_CYAN}Formatting Boot/EFI partition: $ESP_PART (FAT32)...${C_RESET}"
+	mkfs.vfat -F 32 -n "APOLLO_BOOT" "$ESP_PART"
+
+	echo -e "${C_CYAN}Formatting Installer Root partition: $ROOT_PART (ext4)...${C_RESET}"
+	mkfs.ext4 -F -L "APOLLO_INST" "$ROOT_PART"
+
+	# Mount filesystems
+	MOUNT_DIR="/tmp/apollo_installer_build"
+	mkdir -p "$MOUNT_DIR"
+	mount "$ROOT_PART" "$MOUNT_DIR"
+	mkdir -p "$MOUNT_DIR/boot/efi"
+	mount "$ESP_PART" "$MOUNT_DIR/boot/efi" 2>/dev/null || mount "$ESP_PART" "$MOUNT_DIR/boot"
+
+	trap 'umount -R "$MOUNT_DIR" 2>/dev/null || true' EXIT
+
+	# Synchronize OS files
+	echo -e "${C_CYAN}Syncing Apollo OS live environment and installer to $TARGET_DEV...${C_RESET}"
+	rsync -aAXv --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found","$MOUNT_DIR"} / "$MOUNT_DIR/"
+
+	# Configure Auto-launching installer on boot
+	mkdir -p "$MOUNT_DIR/etc/systemd/system"
+	cat << 'EOF' > "$MOUNT_DIR/etc/systemd/system/mitra-installer-autostart.service"
+[Unit]
+Description=MitraOS Installer Auto-Launcher
+After=network.target getty.target
+
+[Service]
+Type=idle
+ExecStart=/opt/mitraos/bin/mitra-installer
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	chroot "$MOUNT_DIR" systemctl enable mitra-installer-autostart.service 2>/dev/null || true
+
+	# Fstab for Installer Media
+	ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
+	ESP_UUID=$(blkid -s UUID -o value "$ESP_PART")
+
+	cat << EOF > "$MOUNT_DIR/etc/fstab"
+# Apollo OS Bootable Installer Media
+UUID=$ROOT_UUID  /          ext4    defaults,noatime,nodiratime,commit=60  0  1
+UUID=$ESP_UUID   /boot/efi  vfat    defaults,noatime                       0  2
+tmpfs            /tmp       tmpfs   defaults,noatime,nosuid                0  0
+EOF
+
+	# Install Bootloader (UEFI, BIOS, or Hybrid)
+	echo -e "${C_CYAN}Installing Bootloader ($BOOT_MODE_NAME) to $TARGET_DEV...${C_RESET}"
+	mount --bind /dev "$MOUNT_DIR/dev"
+	mount --bind /proc "$MOUNT_DIR/proc"
+	mount --bind /sys "$MOUNT_DIR/sys"
+
+	if [[ $BOOT_MODE_CHOICE == "1" || $BOOT_MODE_CHOICE == "3" ]]; then
+		echo -e "${C_CYAN}Deploying UEFI GRUB bootloader ($EFI_TARGET)...${C_RESET}"
+		chroot "$MOUNT_DIR" grub-install --target="$EFI_TARGET" --efi-directory=/boot/efi --bootloader-id=ApolloOS --recheck --removable 2>/dev/null || true
+	fi
+
+	if [[ $BOOT_MODE_CHOICE == "2" || $BOOT_MODE_CHOICE == "3" ]]; then
+		echo -e "${C_CYAN}Deploying Legacy BIOS GRUB bootloader (Pentium 4 compatible)...${C_RESET}"
+		chroot "$MOUNT_DIR" grub-install --target=i386-pc --recheck "$TARGET_DEV" 2>/dev/null || true
+	fi
+
+	# Generate GRUB Configuration
+	cat << 'EOF' > "$MOUNT_DIR/boot/grub/grub.cfg"
+set default=0
+set timeout=5
+
+insmod font
+if loadfont /boot/grub/fonts/unicode.pf2 ; then
+    set gfxmode=auto
+    insmod gfxterm
+    terminal_output gfxterm
+fi
+
+set menu_color_normal=white/black
+set menu_color_highlight=cyan/black
+
+menuentry "🚀 Apollo OS (Live Environment & Installer)" {
+    linux /boot/vmlinuz root=LABEL=APOLLO_INST rw quiet splash
+    initrd /boot/initrd.img
+}
+
+menuentry "💾 Apollo OS (Direct Disk Installer)" {
+    linux /boot/vmlinuz root=LABEL=APOLLO_INST rw apollo.autoinstall=1
+    initrd /boot/initrd.img
+}
+
+menuentry "🛡️ Apollo OS (Safe Graphics / Low RAM Mode - Pentium 4)" {
+    linux /boot/vmlinuz root=LABEL=APOLLO_INST rw nomodeset acpi=off single
+    initrd /boot/initrd.img
+}
+
+menuentry "🔄 Reboot System" {
+    reboot
+}
+
+menuentry "⏻ Power Off System" {
+    halt
+}
+EOF
+
+	chroot "$MOUNT_DIR" update-grub 2>/dev/null || true
+
+	# Cleanup
+	umount "$MOUNT_DIR/dev" "$MOUNT_DIR/proc" "$MOUNT_DIR/sys" 2>/dev/null || true
+	umount -R "$MOUNT_DIR" 2>/dev/null || true
+	trap - EXIT
+
+	echo -e "\n${C_GREEN}[SUCCESS]${C_RESET} ${C_BOLD}Apollo OS Bootable Installer created on $TARGET_DEV ($MEDIA_DESC)!${C_RESET}"
+	echo -e "${C_CYAN}Bootloader Technology: ${BOOT_MODE_NAME}${C_RESET}"
+	echo -e "${C_WHITE}You can now insert this USB drive into any computer and boot to install Apollo OS.${C_RESET}\n"
+
+	G_WHIP_MSG "Installer Created" "Bootable Installer Created Successfully!\n\nTarget Media: $TARGET_DEV ($MEDIA_DESC)\nBootloader: $BOOT_MODE_NAME\nProfile: $PROFILE_NAME\n\nYou can now plug this drive into any PC or Laptop and boot to install Apollo OS!"
+
+	G_EXIT_BANNER
+}

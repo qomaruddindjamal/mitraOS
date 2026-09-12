@@ -1,0 +1,30 @@
+# ===================================================================
+# MitraOS Unattended First-Boot Configuration (mitra.txt)
+# Founder: Qomaruddin Djamal
+# Company: Citra Media Technology & Mitra Utama Group
+# ===================================================================
+# Edit file ini sebelum booting pertama untuk mengotomatisasi
+# hostname, akun pengguna, jaringan Wi-Fi, dan instalasi software.
+# ===================================================================
+
+# 1. Identitas Jaringan & Hostname
+AUTO_SETUP_NET_HOSTNAME="mitraos"
+AUTO_SETUP_TIMEZONE="Asia/Jakarta"
+
+# 2. Akun Root & Pengguna Sistem
+AUTO_SETUP_ROOT_PASSWORD=""
+AUTO_SETUP_CREATE_USER=1
+AUTO_SETUP_USERNAME="mitra"
+AUTO_SETUP_PASSWORD="mitra"
+
+# 3. Konfigurasi Jaringan Wi-Fi Otomatis (0 = Nonaktif, 1 = Aktif)
+AUTO_SETUP_NET_WIFI_ENABLED=0
+AUTO_SETUP_NET_WIFI_SSID="Nama_WiFi_Anda"
+AUTO_SETUP_NET_WIFI_KEY="Password_WiFi_Anda"
+
+# 4. Instalasi Software Otomatis Saat Booting Pertama
+# Pilihan: docker, portainer, cockpit, nginx, tools
+AUTO_SETUP_INSTALL_SOFTWARE="tools"
+
+# 5. Layanan Remote Helpdesk & Web Terminal (1 = Aktif, 0 = Nonaktif)
+AUTO_SETUP_REMOTE_ASSIST=1

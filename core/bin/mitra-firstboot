@@ -1,0 +1,136 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS - Automated First Boot Handler
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Location: /opt/mitraos/bin/mitra-firstboot
+	#//////////////////////////////////////////////////////////////////
+
+	# Sourcing Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	CONFIG_FILE='/boot/mitra.txt'
+	[[ -f $CONFIG_FILE ]] || CONFIG_FILE='/boot/apollo.txt'
+	[[ -f $CONFIG_FILE ]] || exit 0
+
+	# Source configuration
+	# shellcheck disable=SC1090
+	. "$CONFIG_FILE"
+
+	G_MITRA_NOTIFY -1 "Memulai Konfigurasi First-Boot MitraOS..."
+
+	# 1. Expand Filesystem if root is on SD/USB
+	if command -v resize2fs >/dev/null 2>&1; then
+		root_dev=$(findmnt -n -o SOURCE /)
+		if [[ -b $root_dev ]]; then
+			G_MITRA_NOTIFY 0 "Memperluas sistem berkas pada $root_dev..."
+			resize2fs "$root_dev" 2>/dev/null
+		fi
+	fi
+
+	# 2. Hostname
+	if [[ -n $AUTO_SETUP_NET_HOSTNAME ]]; then
+		G_MITRA_NOTIFY 0 "Menetapkan hostname ke $AUTO_SETUP_NET_HOSTNAME..."
+		hostnamectl set-hostname "$AUTO_SETUP_NET_HOSTNAME"
+		sed -i "s/127.0.1.1.*/127.0.1.1\t$AUTO_SETUP_NET_HOSTNAME/" /etc/hosts 2>/dev/null
+	fi
+
+	# 3. Timezone & Locale
+	if [[ -n $AUTO_SETUP_TIMEZONE ]]; then
+		timedatectl set-timezone "$AUTO_SETUP_TIMEZONE" 2>/dev/null
+	fi
+
+	# 4. Root Password
+	if [[ -n $AUTO_SETUP_ROOT_PASSWORD ]]; then
+		echo "root:$AUTO_SETUP_ROOT_PASSWORD" | chpasswd
+	fi
+
+	# 5. Non-root user (mitra / apollo)
+	USER_NAME="${AUTO_SETUP_USERNAME:-mitra}"
+	if [[ $AUTO_SETUP_CREATE_USER == 1 || $AUTO_SETUP_CREATE_APOLLO_USER == 1 || -z $AUTO_SETUP_CREATE_USER ]]; then
+		if ! id -u "$USER_NAME" >/dev/null 2>&1; then
+			G_MITRA_NOTIFY 0 "Membuat pengguna '$USER_NAME'..."
+			useradd -m -s /bin/bash -G sudo,adm,dialout,audio,video "$USER_NAME"
+			user_pass="${AUTO_SETUP_PASSWORD:-${AUTO_SETUP_APOLLO_PASSWORD:-mitra}}"
+			echo "$USER_NAME:$user_pass" | chpasswd
+		fi
+	fi
+
+	# 6. WiFi Setup
+	if [[ $AUTO_SETUP_NET_WIFI_ENABLED == 1 && -n $AUTO_SETUP_NET_WIFI_SSID ]]; then
+		G_MITRA_NOTIFY 0 "Mengkonfigurasi jaringan Wi-Fi: $AUTO_SETUP_NET_WIFI_SSID..."
+		if command -v nmcli >/dev/null 2>&1; then
+			nmcli dev wifi connect "$AUTO_SETUP_NET_WIFI_SSID" password "$AUTO_SETUP_NET_WIFI_KEY" 2>/dev/null
+		elif [[ -f '/etc/wpa_supplicant/wpa_supplicant.conf' ]]; then
+			wpa_passphrase "$AUTO_SETUP_NET_WIFI_SSID" "$AUTO_SETUP_NET_WIFI_KEY" >> /etc/wpa_supplicant/wpa_supplicant.conf
+			systemctl restart wpa_supplicant 2>/dev/null
+		fi
+	fi
+
+	# 7. Automated Software Installation
+	if [[ -n $AUTO_SETUP_INSTALL_SOFTWARE ]]; then
+		G_MITRA_NOTIFY 0 "Instalasi software otomatis: $AUTO_SETUP_INSTALL_SOFTWARE..."
+		IFS=',' read -ra SW_ARRAY <<< "$AUTO_SETUP_INSTALL_SOFTWARE"
+		for sw in "${SW_ARRAY[@]}"; do
+			sw=$(echo "$sw" | xargs) # trim whitespace
+			case $sw in
+				docker)
+					curl -fsSL https://get.docker.com | sh
+					systemctl enable --now docker 2>/dev/null
+					;;
+				portainer)
+					docker volume create portainer_data 2>/dev/null
+					docker run -d -p 9000:9000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest 2>/dev/null
+					;;
+				cockpit)
+					apt-get update && apt-get -y --no-install-recommends install cockpit
+					systemctl enable --now cockpit.socket 2>/dev/null
+					;;
+				nginx)
+					apt-get update && apt-get -y --no-install-recommends install nginx
+					systemctl enable --now nginx 2>/dev/null
+					;;
+				tools)
+					apt-get update && apt-get -y --no-install-recommends install htop tmux curl git vim fastfetch
+					;;
+			esac
+		done
+	fi
+
+	# Mark stage complete
+	mkdir -p /boot/mitraos /boot/apollo 2>/dev/null
+	echo "2" > /boot/mitraos/.install_stage 2>/dev/null
+	echo "2" > /boot/apollo/.install_stage 2>/dev/null
+	G_MITRA_NOTIFY 1 "First-Boot MitraOS selesai dengan sukses."
+}

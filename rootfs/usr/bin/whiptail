@@ -1,0 +1,160 @@
+#!/bin/bash
+# Lightweight TUI dialog/whiptail emulator for MitraOS / Apollo OS
+# Features: In-place stationary rendering, auto-screen clearing, ANSI styling
+TITLE=""
+BACKTITLE=""
+
+args=("$@")
+i=0
+while (( i < ${#args[@]} )); do
+    case "${args[i]}" in
+        --title)
+            TITLE="${args[i+1]}"
+            (( i += 2 ))
+            ;;
+        --backtitle)
+            BACKTITLE="${args[i+1]}"
+            (( i += 2 ))
+            ;;
+        --msgbox)
+            MSG="${args[i+1]}"
+            clear
+            echo "=========================================================================="
+            [[ -n $TITLE ]] && echo "  ■ $TITLE"
+            echo "=========================================================================="
+            echo -e "$MSG"
+            echo "=========================================================================="
+            echo -n "Tekan Enter untuk melanjutkan..."
+            read -r _
+            clear
+            exit 0
+            ;;
+        --yesno)
+            MSG="${args[i+1]}"
+            clear
+            echo "=========================================================================="
+            [[ -n $TITLE ]] && echo "  [!] $TITLE"
+            echo "=========================================================================="
+            echo -e "$MSG"
+            echo "=========================================================================="
+            echo -n "Lanjutkan? (Y/n): "
+            read -r choice
+            clear
+            [[ -z "$choice" || "$choice" =~ ^[Yy] ]] && exit 0 || exit 1
+            ;;
+        --checklist)
+            MSG="${args[i+1]}"
+            (( i += 5 ))
+            items=()
+            descs=()
+            statuses=()
+            while (( i < ${#args[@]} )); do
+                items+=("${args[i]}")
+                descs+=("${args[i+1]}")
+                statuses+=("${args[i+2]}")
+                (( i += 3 ))
+            done
+            clear
+            echo "=========================================================================="
+            [[ -n $TITLE ]] && echo "  [+] $TITLE"
+            echo "=========================================================================="
+            [[ -n $MSG ]] && echo -e "$MSG\n"
+            for (( idx=0; idx<${#items[@]}; idx++ )); do
+                printf "  [%s] %s (%s)\n" "${items[idx]}" "${descs[idx]}" "${statuses[idx]}"
+            done
+            echo "=========================================================================="
+            echo -n "Tekan Enter untuk melanjutkan [Default Packages]: "
+            read -r _
+            selected_items=""
+            for (( idx=0; idx<${#items[@]}; idx++ )); do
+                if [[ "${statuses[idx]}" == "ON" ]]; then
+                    selected_items+="\"${items[idx]}\" "
+                fi
+            done
+            echo -n "${selected_items% }" >&2
+            clear
+            exit 0
+            ;;
+        --inputbox|--passwordbox)
+            MSG="${args[i+1]}"
+            DEFAULT_VAL="${args[i+4]}"
+            clear
+            echo "=========================================================================="
+            [[ -n $TITLE ]] && echo "  [>] $TITLE"
+            echo "=========================================================================="
+            echo -e "$MSG"
+            [[ -n $DEFAULT_VAL ]] && echo "Default: $DEFAULT_VAL"
+            echo "--------------------------------------------------------------------------"
+            if [[ "${args[i]}" == "--passwordbox" ]]; then
+                echo -n "Masukkan nilai: "
+                read -r -s user_val
+                echo ""
+            else
+                echo -n "Masukkan nilai [${DEFAULT_VAL}]: "
+                read -r user_val
+            fi
+            [[ -z $user_val ]] && user_val="$DEFAULT_VAL"
+            clear
+            echo -n "$user_val" >&2
+            exit 0
+            ;;
+        --menu)
+            MSG="${args[i+1]}"
+            (( i += 5 ))
+            items=()
+            descs=()
+            while (( i < ${#args[@]} )); do
+                items+=("${args[i]}")
+                descs+=("${args[i+1]}")
+                (( i += 2 ))
+            done
+            clear
+            echo -e "\033[1;38;5;208m==============================================================================\033[0m"
+            [[ -n $TITLE ]] && echo -e " \033[1;37m■ $TITLE\033[0m"
+            echo -e "\033[1;38;5;208m==============================================================================\033[0m"
+            [[ -n $MSG ]] && echo -e "$MSG\n"
+            for (( idx=0; idx<${#items[@]}; idx++ )); do
+                item_tag="${items[idx]}"
+                item_desc="${descs[idx]}"
+                if [[ "$item_tag" == "--"* || "$item_tag" == "CAT_"* || "$item_tag" == "HEAD"* ]]; then
+                    bar_len=$(( 68 - ${#item_desc} - 6 ))
+                    (( bar_len < 4 )) && bar_len=4
+                    dashes=$(printf '─%.0s' $(seq 1 $bar_len))
+                    echo -e "\n \033[1;36m── [ $item_desc ] $dashes\033[0m"
+                else
+                    if [[ "$item_tag" =~ ^[0-9]+$ ]]; then
+                        printf "  [\033[1;33m%2s\033[0m] %s\n" "$item_tag" "$item_desc"
+                    else
+                        printf "  [\033[1;33m%s\033[0m] %s\n" "$item_tag" "$item_desc"
+                    fi
+                fi
+            done
+            echo ""
+            echo -e "\033[1;38;5;208m==============================================================================\033[0m"
+            while true; do
+                echo -n "Pilihan Anda: "
+                read -r user_choice
+                [[ -z "$user_choice" ]] && user_choice="${items[0]}"
+                if [[ "$user_choice" == "--"* ]]; then
+                    echo "Opsi kategori tidak dapat dipilih. Silakan masukkan nomor menu."
+                    continue
+                fi
+                break
+            done
+            # If user typed 1-based index instead of tag, map it
+            if [[ "$user_choice" =~ ^[0-9]+$ ]] && (( user_choice >= 1 && user_choice <= ${#items[@]} )); then
+                direct_match=0
+                for itm in "${items[@]}"; do
+                    [[ "$itm" == "$user_choice" ]] && direct_match=1 && break
+                done
+                (( direct_match == 0 )) && user_choice="${items[user_choice-1]}"
+            fi
+            clear
+            echo -n "$user_choice" >&2
+            exit 0
+            ;;
+        *)
+            (( i++ ))
+            ;;
+    esac
+done

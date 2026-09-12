@@ -1,0 +1,16 @@
+# MitraOS Server & Cloud Suite Manifest
+nginx
+apache2
+mariadb-server
+mariadb-client
+postgresql
+redis-server
+sqlite3
+php-fpm
+php-mysql
+certbot
+python3-certbot-nginx
+ufw
+fail2ban
+rsync
+cron

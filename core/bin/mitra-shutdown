@@ -1,0 +1,6 @@
+#!/bin/bash
+# MitraOS V.1 - System Shutdown Controller
+echo "Mematikan sistem MitraOS secara aman..."
+sync
+echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+busybox poweroff -f 2>/dev/null || /bin/busybox poweroff -f 2>/dev/null || poweroff -f 2>/dev/null || systemctl poweroff 2>/dev/null || echo o > /proc/sysrq-trigger

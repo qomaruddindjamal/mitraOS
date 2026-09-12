@@ -1,0 +1,156 @@
+#!/bin/bash
+#//////////////////////////////////////////////////////////////////
+# MitraOS Master CLI Entrypoint
+# Founder: Qomaruddin Djamal
+# Company: Citra Media Technology & Mitra Utama Group
+#//////////////////////////////////////////////////////////////////
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+[[ -x "$BIN_DIR/mitra-launcher" ]] || {
+	for d in /boot/apollo /opt/mitraos/bin /mitraos/bin; do
+		if [[ -x "$d/mitra-launcher" ]]; then
+			BIN_DIR="$d"
+			break
+		fi
+	done
+}
+
+# Ensure root privileges if needed for installer/config tools
+ensure_root() {
+	if (( UID != 0 )); then
+		if [ -x /bin/sudo ]; then
+			exec /bin/sudo "$0" "$@"
+		elif [ -x "$BIN_DIR/../rootfs/usr/bin/sudo" ]; then
+			exec "$BIN_DIR/../rootfs/usr/bin/sudo" "$0" "$@"
+		elif [ -x /usr/bin/sudo ]; then
+			exec /usr/bin/sudo "$0" "$@"
+		fi
+	fi
+}
+
+subcmd="$1"
+shift 2>/dev/null || true
+
+case "$subcmd" in
+	banner)
+		if [[ -x "$BIN_DIR/mitra-banner" ]]; then
+			exec "$BIN_DIR/mitra-banner" "$@"
+		elif [[ -x "/boot/apollo/mitra-banner" ]]; then
+			exec "/boot/apollo/mitra-banner" "$@"
+		fi
+		;;
+	launcher|"")
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-launcher" "$@"
+		;;
+	preferences|pref|config)
+		ensure_root "$@"
+		if [[ -x "$BIN_DIR/mitra-preferences" ]]; then
+			exec "$BIN_DIR/mitra-preferences" "$@"
+		else
+			exec "$BIN_DIR/mitra-config" "$@"
+		fi
+		;;
+	snap)
+		exec "$BIN_DIR/mitra-snap" "$@"
+		;;
+	desktop)
+		exec "$BIN_DIR/mitra-desktop" "$@"
+		;;
+	antigravity|ai|agy)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-antigravity" "$@"
+		;;
+	asisten|assist|helpdesk)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-asisten" "$@"
+		;;
+	software|apps|app)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-software" "$@"
+		;;
+	installer|install)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-installer" "$@"
+		;;
+	webserver|web)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-webserver" "$@"
+		;;
+	mail|email)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-mail" "$@"
+		;;
+	banner|status)
+		exec "$BIN_DIR/mitra-banner" "$@"
+		;;
+	security|firewall)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-security" "$@"
+		;;
+	services|service)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-services" "$@"
+		;;
+	backup)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-backup" "$@"
+		;;
+	cleaner|clean)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-cleaner" "$@"
+		;;
+	drive|disk)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-drive_manager" "$@"
+		;;
+	update)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-update" "$@"
+		;;
+	firstboot)
+		ensure_root "$@"
+		exec "$BIN_DIR/mitra-firstboot" "$@"
+		;;
+	version|-v|--version)
+		echo "MitraOS Core v1.0.0 (Apollo Edition)"
+		echo "Founder: Qomaruddin Djamal"
+		echo "Company: Citra Media Technology & Mitra Utama Group"
+		exit 0
+		;;
+	help|-h|--help)
+		echo "MitraOS CLI v1.0.0 (Apollo Edition)"
+		echo "Penggunaan: mitra [perintah] [opsi]"
+		echo ""
+		echo "Perintah Tersedia:"
+		echo "  launcher          Membuka Control Center utama TUI (default)"
+		echo "  preferences       Membuka 23 menu System Preferences MitraOS"
+		echo "  snap              Mengatur tata letak jendela (Windows 11-style Snap Layout)"
+		echo "  desktop           Mengubah profil desktop (macOS style dock/topbar, Win11, Low-RAM)"
+		echo "  antigravity       Hub Google Antigravity AI Agent & Developer environment"
+		echo "  asisten           Layanan Remote Web Assistance & Helpdesk"
+		echo "  software          Katalog & installer software multi-ekosistem"
+		echo "  installer         Instal MitraOS ke Hard Disk / SSD / Flashdisk"
+		echo "  webserver         Manajer Web Server & Database (LEMP, LAMP, Lighttpd)"
+		echo "  mail              Deploy & konfigurasi mail server (SnappyMail / iRedMail)"
+		echo "  banner            Menampilkan telemetry & dynamic system monitor"
+		echo "  security          Pengerasan sistem, audit keamanan, dan firewall"
+		echo "  services          Manajer service & daemon sistem"
+		echo "  backup            Backup konfigurasi & sistem"
+		echo "  cleaner           Pembersih cache & ruang penyimpanan"
+		echo "  drive             Manajer disk & mount drive"
+		echo "  update            Pembaruan sistem MitraOS"
+		echo "  version           Informasi versi MitraOS"
+		exit 0
+		;;
+	*)
+		if [[ -x "$BIN_DIR/mitra-$subcmd" ]]; then
+			ensure_root "$@"
+			exec "$BIN_DIR/mitra-$subcmd" "$@"
+		else
+			echo "Perintah tidak dikenal: '$subcmd'"
+			echo "Ketik 'mitra help' untuk melihat daftar perintah."
+			exit 1
+		fi
+		;;
+esac

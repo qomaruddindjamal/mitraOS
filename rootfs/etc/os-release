@@ -1,0 +1,13 @@
+PRETTY_NAME="MitraOS V.1 (Apollo)"
+NAME="MitraOS"
+VERSION_ID="1.0"
+VERSION="1.0 (Apollo)"
+VERSION_CODENAME=apollo
+ID=mitraos
+ID_LIKE=debian
+HOME_URL="https://qomaruddindjamal.github.io"
+SUPPORT_URL="mailto:citramedia.info@gmail.com"
+BUG_REPORT_URL="https://qomaruddindjamal.github.io"
+MAINTAINER="Qomaruddin Djamal <mitrautama.info@gmail.com>"
+PRIVACY_POLICY_URL="https://qomaruddindjamal.github.io"
+ORGANIZATION="Citra Media Technology & Mitra Utama Group"

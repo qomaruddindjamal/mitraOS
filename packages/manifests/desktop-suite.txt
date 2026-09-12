@@ -1,0 +1,23 @@
+# MitraOS Desktop & Multimedia Suite Manifest
+xorg
+openbox
+tint2
+plank
+picom
+feh
+thunar
+xfce4-terminal
+firefox-esr
+mpv
+vlc
+gimp
+inkscape
+flameshot
+pavucontrol
+pulseaudio
+wmctrl
+xdotool
+x11-xserver-utils
+fonts-inter
+fonts-roboto
+fonts-jetbrains-mono

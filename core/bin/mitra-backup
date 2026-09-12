@@ -1,0 +1,73 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Backup & Disaster Recovery
+	#//////////////////////////////////////////////////////////////////
+
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Backup'
+	G_CHECK_ROOT_USER "$@"
+
+	CHOICE=$($TUI_TOOL --title "Apollo OS - Backup & Recovery" \
+		--menu "Select action:" 14 65 3 \
+		"1" "Create Full System Backup (tar.gz archive)" \
+		"2" "Restore from Backup Archive" \
+		"0" "Back" \
+		3>&1 1>&2 2>&3)
+
+	case $CHOICE in
+		1)
+			dest=$($TUI_TOOL --title "Backup Destination" --inputbox "Target directory for backup archive:" 10 55 "/mnt/backup" 3>&1 1>&2 2>&3)
+			if [[ -n $dest ]]; then
+				mkdir -p "$dest"
+				backup_file="${dest}/apollo_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+				G_APOLLO-NOTIFY -1 "Creating backup archive: $backup_file ..."
+				tar --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/tmp --exclude=/mnt --exclude=/media --exclude=/run -czf "$backup_file" /
+				G_APOLLO-NOTIFY 1 "Backup created at: $backup_file"
+				G_WHIP_MSG "Success" "Backup completed: $backup_file"
+			fi
+			;;
+		2)
+			src=$($TUI_TOOL --title "Restore Backup" --inputbox "Path to .tar.gz backup file:" 10 60 3>&1 1>&2 2>&3)
+			if [[ -f $src ]]; then
+				if G_WHIP_YESNO "Confirm Restore" "WARNING: Restoring will overwrite existing system files. Proceed?"; then
+					tar -xzf "$src" -C /
+					G_WHIP_MSG "Restored" "Backup restored successfully. Please reboot."
+				fi
+			fi
+			;;
+	esac
+
+	G_EXIT_BANNER
+}

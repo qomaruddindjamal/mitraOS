@@ -1,0 +1,997 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Interactive 17-Step Enterprise Installer
+	# Structure:
+	# ├── 1. Welcome
+	# ├── 2. Language
+	# ├── 3. Keyboard
+	# ├── 4. Timezone
+	# ├── 5. Network
+	# ├── 6. Hostname
+	# ├── 7. User
+	# ├── 8. Password
+	# ├── 9. Disk (Auto Partition / Manual Partition)
+	# ├── 10. Filesystem
+	# ├── 11. Swap
+	# ├── 12. Bootloader
+	# ├── 13. SSH
+	# ├── 14. Package Selection
+	# ├── 15. Summary
+	# ├── 16. Install
+	# └── 17. Reboot
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Author: Qomaruddin Djamal
+	# Location: /boot/apollo/mitra-installer
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	C_RESET=$'\033[0m'
+	C_BOLD=$'\033[1m'
+	C_ORANGE=$'\033[38;5;208m'
+	C_CYAN=$'\033[38;5;45m'
+	C_GREEN=$'\033[38;5;82m'
+	C_YELLOW=$'\033[38;5;220m'
+	C_RED=$'\033[38;5;196m'
+	C_WHITE=$'\033[1;37m'
+	C_GREY=$'\033[38;5;244m'
+
+	TUI_TOOL="whiptail"
+	command -v whiptail >/dev/null 2>&1 || TUI_TOOL="dialog"
+	command -v "$TUI_TOOL" >/dev/null 2>&1 || TUI_TOOL=""
+
+	msg_box() {
+		local title=$1; local text=$2
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --msgbox "$text" 18 76
+		else
+			echo -e "\n=== $title ===\n$text\n"
+			read -r -p "Tekan Enter untuk melanjutkan..."
+		fi
+	}
+
+	yesno_box() {
+		local title=$1; local text=$2
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --yesno "$text" 16 74
+			return $?
+		else
+			echo -e "\n=== $title ===\n$text\n"
+			read -r -p "Lanjutkan? [y/N]: " ans
+			[[ "$ans" =~ ^[Yy]$ ]] && return 0 || return 1
+		fi
+	}
+
+	input_box() {
+		local title=$1; local prompt=$2; local default_val=$3
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --inputbox "$prompt" 12 70 "$default_val" 3>&1 1>&2 2>&3
+		else
+			read -r -p "$prompt [$default_val]: " val
+			echo "${val:-$default_val}"
+		fi
+	}
+
+	pass_box() {
+		local title=$1; local prompt=$2
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --passwordbox "$prompt" 12 70 3>&1 1>&2 2>&3
+		else
+			read -r -s -p "$prompt: " val; echo ""
+			echo "$val"
+		fi
+	}
+
+	# Detect currently mounted root device to prevent self-overwriting
+	ROOT_DISK=$(awk '$2 == "/" {print $1}' /proc/mounts 2>/dev/null | sed -r 's/p?[0-9]+$//')
+	[[ -z $ROOT_DISK ]] && ROOT_DISK=$(findmnt -n -o SOURCE / 2>/dev/null | sed -r 's/p?[0-9]+$//')
+
+	# Architecture detection
+	ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+	TOTAL_RAM=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "1024")
+
+	AUTO_MODE=0
+	if [[ "$1" == "--auto" || "$1" == "-y" || "$1" == "/dev/sda" || "$MITRA_AUTO_INSTALL" == "1" ]]; then
+		AUTO_MODE=1
+		TUI_TOOL=""
+		LANG_CHOICE="id_ID.UTF-8"
+		KB_CHOICE="us"
+		TZ_CHOICE="Asia/Jakarta"
+		NET_CHOICE="1"
+		NET_MODE="dhcp"
+		SYS_HOSTNAME="${MITRA_HOSTNAME:-citramedia}"
+		SYS_FULLNAME="${MITRA_FULLNAME:-Qomaruddin Djamal}"
+		SYS_USERNAME="${MITRA_USERNAME:-djamal}"
+		USER_PASSWORD="${MITRA_PASSWORD:-admin321}"
+		ROOT_PASSWORD="${MITRA_PASSWORD:-admin321}"
+		TARGET_DISK="/dev/sda"
+		[[ -b "$1" ]] && TARGET_DISK="$1"
+		PART_MODE="auto"
+		FS_CHOICE="ext4"
+		SWAP_CHOICE="file_2g"
+		BOOT_CHOICE="uefi"
+		SSH_CHOICE="disable"
+		PKGS="\"CORE\" \"SECURITY\" \"APPS\""
+	fi
+
+	if [[ $AUTO_MODE -eq 0 ]]; then
+	# =========================================================================
+	# STEP 1. WELCOME
+	# =========================================================================
+	WELCOME_MSG="Selamat Datang di MitraOS INSTALLER V.1 (Apollo)\n\n"
+	WELCOME_MSG+="Pengembang : Citra Media Technology & Mitra Utama Group\n"
+	WELCOME_MSG+="Founder    : Qomaruddin Djamal\n"
+	WELCOME_MSG+="Website    : https://qomaruddindjamal.github.io\n"
+	WELCOME_MSG+="Dukungan   : citramedia.info@gmail.com & mitrautama.info@gmail.com\n\n"
+	WELCOME_MSG+="Arsitektur : $ARCH ($TOTAL_RAM MB RAM terdeteksi)\n\n"
+	WELCOME_MSG+="Wizard ini akan memandu Anda melakukan instalasi sistem operasi\n"
+	WELCOME_MSG+="MitraOS ke media penyimpanan internal (HDD, SSD, NVMe, atau MicroSD).\n\n"
+	WELCOME_MSG+="Tekan [OK] untuk memulai langkah konfigurasi."
+
+	msg_box "MitraOS INSTALLER - 1/17 Welcome" "$WELCOME_MSG"
+
+	# =========================================================================
+	# STEP 2. LANGUAGE
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		LANG_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 2/17 Language" \
+			--menu "Pilih bahasa sistem yang diinginkan:" 14 74 2 \
+			"id_ID.UTF-8" "Bahasa Indonesia (Default)" \
+			"en_US.UTF-8" "English (United States)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		echo -e "\n=== 2/17 Language ===\n1) id_ID.UTF-8 (Bahasa Indonesia)\n2) en_US.UTF-8 (English)"
+		read -r -p "Pilihan [1]: " l_opt
+		[[ "$l_opt" == "2" ]] && LANG_CHOICE="en_US.UTF-8" || LANG_CHOICE="id_ID.UTF-8"
+	fi
+
+	# =========================================================================
+	# STEP 3. KEYBOARD
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		KB_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 3/17 Keyboard Layout" \
+			--menu "Pilih tata letak papan ketik (Keyboard Layout):" 16 74 4 \
+			"us"     "US English (QWERTY Standard) - Rekomendasi" \
+			"uk"     "UK English" \
+			"dvorak" "US Dvorak" \
+			"de"     "German (QWERTZ)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		KB_CHOICE="us"
+	fi
+
+	# =========================================================================
+	# STEP 4. TIMEZONE
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		TZ_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 4/17 Timezone" \
+			--menu "Pilih zona waktu sistem perangkat Anda:" 16 74 5 \
+			"Asia/Jakarta"   "WIB (Waktu Indonesia Barat - Jakarta/Sumatera/Jawa)" \
+			"Asia/Makassar"  "WITA (Waktu Indonesia Tengah - Bali/Kalimantan/Sulawesi)" \
+			"Asia/Jayapura"  "WIT (Waktu Indonesia Timur - Maluku/Papua)" \
+			"UTC"            "UTC (Universal Coordinated Time)" \
+			"Asia/Singapore" "SGT (Singapore / Malaysia)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		TZ_CHOICE="Asia/Jakarta"
+	fi
+
+	# =========================================================================
+	# STEP 5. NETWORK
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		NET_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 5/17 Network" \
+			--menu "Pilih metode konfigurasi jaringan Internet:" 14 74 2 \
+			"1" "DHCP Otomatis (Rekomendasi - IP dari Router/Modem/WiFi)" \
+			"2" "Manual Static IP (Khusus Server / Jaringan Kantor)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		NET_CHOICE="1"
+	fi
+
+	NET_MODE="dhcp"
+	NET_IP=""
+	NET_GW=""
+	NET_DNS="8.8.8.8"
+	if [[ "$NET_CHOICE" == "2" ]]; then
+		NET_MODE="static"
+		NET_IP=$(input_box "Static IP" "Masukkan Alamat IP (contoh: 192.168.1.150/24):" "192.168.1.150/24")
+		NET_GW=$(input_box "Gateway" "Masukkan Gateway Router (contoh: 192.168.1.1):" "192.168.1.1")
+		NET_DNS=$(input_box "DNS Server" "Masukkan DNS Server utama:" "8.8.8.8")
+	fi
+
+	# =========================================================================
+	# STEP 6. HOSTNAME
+	# =========================================================================
+	SYS_HOSTNAME=$(input_box "MitraOS INSTALLER - 6/17 Hostname" "Nama Host (Komputer) pada Jaringan:" "citramedia")
+	[[ -z "$SYS_HOSTNAME" ]] && SYS_HOSTNAME="citramedia"
+
+	# =========================================================================
+	# STEP 7. USER
+	# =========================================================================
+	SYS_FULLNAME=$(input_box "MitraOS INSTALLER - 7/17 User (Nama Lengkap)" "Nama Lengkap Pengguna:" "Qomaruddin Djamal")
+	SYS_USERNAME=$(input_box "MitraOS INSTALLER - 7/17 User (Username)" "Username Non-Root (Huruf kecil):" "djamal")
+	[[ -z "$SYS_USERNAME" ]] && SYS_USERNAME="djamal"
+
+	# =========================================================================
+	# STEP 8. PASSWORD
+	# =========================================================================
+	while true; do
+		PASS1=$(pass_box "MitraOS INSTALLER - 8/17 Password" "Masukkan kata sandi untuk akun '$SYS_USERNAME':")
+		PASS2=$(pass_box "MitraOS INSTALLER - 8/17 Password Konfirmasi" "Ketik ulang kata sandi '$SYS_USERNAME':")
+		if [[ "$PASS1" == "$PASS2" && -n "$PASS1" ]]; then
+			USER_PASSWORD="$PASS1"
+			ROOT_PASSWORD="$PASS1"
+			break
+		else
+			msg_box "Perhatian" "Kata sandi tidak cocok atau kosong! Silakan ulangi."
+		fi
+	done
+
+	# =========================================================================
+	# STEP 9. DISK (Auto Partition / Manual Partition)
+	# =========================================================================
+	# Scan available drives
+	modprobe sd_mod 2>/dev/null || true
+	modprobe hv_storvsc 2>/dev/null || true
+	modprobe virtio_blk 2>/dev/null || true
+
+	DISK_LIST=()
+	for blk in /sys/block/*; do
+		[[ -d "$blk" ]] || continue
+		bname=$(basename "$blk")
+		[[ "$bname" =~ ^(loop|ram|sr|dm-|zram) ]] && continue
+		d_dev="/dev/$bname"
+		[[ "$d_dev" == "$ROOT_DISK" ]] && continue
+		
+		size_sectors=0
+		[[ -f "$blk/size" ]] && size_sectors=$(cat "$blk/size" 2>/dev/null)
+		(( size_sectors == 0 )) && continue
+		size_mb=$(( size_sectors * 512 / 1024 / 1024 ))
+		size_gb=$(( size_mb / 1024 ))
+		model="Generic Storage"
+		[[ -f "$blk/device/model" ]] && model=$(cat "$blk/device/model" 2>/dev/null | tr -d '\r\n')
+		DISK_LIST+=("$d_dev" "$size_gb GB - $model")
+	done
+
+	if [[ ${#DISK_LIST[@]} -eq 0 ]]; then
+		DISK_LIST+=("/dev/sda" "20 GB - Virtual/SATA Drive (Default Fallback)")
+	fi
+
+	if [[ -n "$TUI_TOOL" ]]; then
+		TARGET_DISK=$($TUI_TOOL --title "MitraOS INSTALLER - 9/17 Target Disk" \
+			--menu "Pilih disk penyimpanan target yang akan dipasang MitraOS:\n(PERINGATAN: Seluruh data pada disk yang dipilih akan diformat!)" 16 76 4 \
+			"${DISK_LIST[@]}" 3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		TARGET_DISK="${DISK_LIST[0]}"
+	fi
+
+	# Partitioning mode: Auto vs Manual
+	if [[ -n "$TUI_TOOL" ]]; then
+		PART_MODE=$($TUI_TOOL --title "MitraOS INSTALLER - 9/17 Partition Mode" \
+			--menu "Pilih metode skema partisi untuk $TARGET_DISK:" 14 74 2 \
+			"auto"   "Auto Partition (Rekomendasi - Skema EFI 512M + Root + Swap Otomatis)" \
+			"manual" "Manual Partition (Lanjutan - Jalankan cfdisk/fdisk interaktif)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		PART_MODE="auto"
+	fi
+
+	if [[ "$PART_MODE" == "manual" ]]; then
+		clear
+		echo -e "${C_CYAN}[*] Membuka utilitas partisi untuk $TARGET_DISK ...${C_RESET}"
+		if command -v cfdisk >/dev/null 2>&1; then
+			cfdisk "$TARGET_DISK"
+		elif command -v fdisk >/dev/null 2>&1; then
+			fdisk "$TARGET_DISK"
+		fi
+	fi
+
+	# =========================================================================
+	# STEP 10. FILESYSTEM
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		FS_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 10/17 Filesystem" \
+			--menu "Pilih format sistem berkas partisi Root (/):" 15 74 4 \
+			"ext4"  "Ext4 (Default Stabil - Sangat aman dan andal untuk semua storage)" \
+			"btrfs" "Btrfs (Modern - Dukungan snapshot dan kompresi data transparan)" \
+			"xfs"   "XFS (Performa tinggi untuk beban enterprise & database besar)" \
+			"f2fs"  "F2FS (Flash Friendly - Optimal untuk Flash Drive / MicroSD / eMMC)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		FS_CHOICE="ext4"
+	fi
+
+	# =========================================================================
+	# STEP 11. SWAP
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		SWAP_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 11/17 Swap Memory" \
+			--menu "Pilih alokasi memori Swap virtual:" 15 74 4 \
+			"file_2g" "Swap File 2GB (Rekomendasi untuk RAM 2GB - 4GB)" \
+			"file_4g" "Swap File 4GB (Rekomendasi untuk RAM 8GB+ atau kompilasi)" \
+			"zram"    "ZRAM Swap (Kompresi memori RAM instan - Tanpa keausan disk)" \
+			"none"    "Tanpa Swap (Hanya mengandalkan RAM fisik)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		SWAP_CHOICE="file_2g"
+	fi
+
+	# =========================================================================
+	# STEP 12. BOOTLOADER
+	# =========================================================================
+	if [[ -d '/sys/firmware/efi' ]]; then
+		DEFAULT_BOOT="uefi"
+		BOOT_DESC="GRUB UEFI x86_64/ARM64 (Terdeteksi Sistem UEFI)"
+	else
+		DEFAULT_BOOT="bios"
+		BOOT_DESC="GRUB MBR Legacy BIOS"
+	fi
+
+	if [[ -n "$TUI_TOOL" ]]; then
+		BOOT_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 12/17 Bootloader" \
+			--menu "Konfigurasi pemasangan bootloader GRUB:" 14 74 2 \
+			"uefi" "GRUB UEFI (GPT System Partition / EFI Bootloader)" \
+			"bios" "GRUB Legacy BIOS (Master Boot Record / MBR)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		BOOT_CHOICE="$DEFAULT_BOOT"
+	fi
+
+	# =========================================================================
+	# STEP 13. SSH
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		SSH_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 13/17 SSH Remote Access" \
+			--menu "Konfigurasi keamanan layanan remote akses SSH (Dropbear):\n\nDemi keamanan sistem terpasang, tentukan apakah port 22 diaktifkan otomatis saat booting atau dinonaktifkan:" 16 76 2 \
+			"disable" "Nonaktifkan SSH Server (Default Aman - Akses konsol lokal)" \
+			"enable"  "Aktifkan SSH Server (Port 22 aktif otomatis saat boot)" \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		SSH_CHOICE="disable"
+	fi
+
+	# =========================================================================
+	# STEP 14. PACKAGE SELECTION
+	# =========================================================================
+	if [[ -n "$TUI_TOOL" ]]; then
+		PKGS=$($TUI_TOOL --title "MitraOS INSTALLER - 14/17 Package Selection" \
+			--checklist "Pilih bundel perangkat lunak bawaan yang ingin diaktifkan:" 18 76 5 \
+			"CORE"     "MitraOS Core & System Admin Tools" ON \
+			"SECURITY" "Security & Ethical Hacking Suite (mitra-security)" ON \
+			"WEBSERV"  "Web Server & Database Stack (Nginx/PHP/MariaDB)" OFF \
+			"APPS"     "Multi-OS Universal App Hub (mitra-apps)" ON \
+			"GUI"      "Lightweight XFCE Desktop GUI" OFF \
+			3>&1 1>&2 2>&3)
+		[[ $? -ne 0 ]] && exit 0
+	else
+		PKGS="\"CORE\" \"SECURITY\" \"APPS\""
+	fi
+
+	# =========================================================================
+	# STEP 15. SUMMARY & FINAL CONFIRMATION
+	# =========================================================================
+	SUMMARY_TEXT="RINGKASAN KONFIGURASI INSTALASI MITRAOS V.1:\n\n"
+	SUMMARY_TEXT+="1. Bahasa & Keyboard : $LANG_CHOICE | Layout: $KB_CHOICE\n"
+	SUMMARY_TEXT+="2. Zona Waktu        : $TZ_CHOICE\n"
+	SUMMARY_TEXT+="3. Mode Jaringan     : $NET_MODE ($NET_IP)\n"
+	SUMMARY_TEXT+="4. Hostname          : $SYS_HOSTNAME\n"
+	SUMMARY_TEXT+="5. Akun Pengguna     : $SYS_USERNAME ($SYS_FULLNAME)\n"
+	SUMMARY_TEXT+="6. Target Disk       : $TARGET_DISK (Mode: $PART_MODE)\n"
+	SUMMARY_TEXT+="7. Root Filesystem   : $FS_CHOICE\n"
+	SUMMARY_TEXT+="8. Alokasi Swap      : $SWAP_CHOICE\n"
+	SUMMARY_TEXT+="9. Bootloader        : $BOOT_CHOICE\n"
+	SUMMARY_TEXT+="10. Layanan SSH      : $SSH_CHOICE\n"
+	SUMMARY_TEXT+="11. Bundel Software  : $PKGS\n\n"
+	SUMMARY_TEXT+="PERINGATAN FINAL: Seluruh isi partisi pada $TARGET_DISK akan diformat.\n"
+	SUMMARY_TEXT+="Apakah Anda yakin ingin memulai penulisan instalasi ke disk sekarang?"
+
+	if ! yesno_box "MitraOS INSTALLER - 15/17 Summary & Confirmation" "$SUMMARY_TEXT"; then
+		msg_box "Dibatalkan" "Proses instalasi dibatalkan. Tidak ada perubahan yang ditulis ke disk."
+		exit 0
+	fi
+	fi
+
+	# =========================================================================
+	# STEP 16. INSTALL
+	# =========================================================================
+	clear
+	echo -e "${C_ORANGE_BOLD}========================================================================${C_RESET}"
+	echo -e "${C_WHITE}       ■ MITRA OS V.1 (APOLLO) - INSTALLING TO DISK${C_RESET}"
+	echo -e "${C_CYAN}       Target: $TARGET_DISK | Filesystem: $FS_CHOICE${C_RESET}"
+	echo -e "${C_ORANGE_BOLD}========================================================================${C_RESET}\n"
+
+	TARGET_MNT="/mnt/mitra_target"
+	mkdir -p "$TARGET_MNT"
+
+	# 1. Partitioning (GPT for UEFI)
+	if [[ "$PART_MODE" == "auto" ]]; then
+		echo -e "${C_CYAN}[1/7] Menyiapkan tabel partisi GPT pada $TARGET_DISK ...${C_RESET}"
+		# Ensure dynamic linker is valid
+		if [[ ! -f /lib64/ld-linux-x86-64.so.2 || -L /lib64/ld-linux-x86-64.so.2 ]]; then
+			rm -f /lib64/ld-linux-x86-64.so.2 2>/dev/null || true
+			for f in /usr/lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /usr/lib/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; do
+				if [[ -f "$f" && ! -L "$f" ]]; then
+					cp -f "$f" /lib64/ld-linux-x86-64.so.2 2>/dev/null || true
+					break
+				fi
+			done
+		fi
+
+		umount "${TARGET_DISK}"* 2>/dev/null || true
+		dd if=/dev/zero of="$TARGET_DISK" bs=1M count=16 conv=notrunc 2>/dev/null || true
+
+		if command -v parted >/dev/null 2>&1; then
+			echo -e "    Menggunakan parted untuk membuat tabel partisi GPT..."
+			parted -s "$TARGET_DISK" mklabel gpt 2>&1 || true
+			parted -s "$TARGET_DISK" mkpart ESP fat32 1MiB 257MiB 2>&1 || true
+			parted -s "$TARGET_DISK" set 1 esp on 2>&1 || true
+			parted -s "$TARGET_DISK" mkpart primary ext4 257MiB 100% 2>&1 || true
+		elif command -v sfdisk >/dev/null 2>&1; then
+			echo -e "    Menggunakan sfdisk untuk membuat tabel partisi GPT..."
+			printf "label: gpt\n,256M,U\n,,L\n" | sfdisk "$TARGET_DISK" 2>&1 || true
+		elif command -v fdisk >/dev/null 2>&1; then
+			echo -e "    Menggunakan fdisk untuk membuat tabel partisi GPT..."
+			printf 'g\nn\n1\n\n+256M\nt\n1\nn\n2\n\n\nw\n' | fdisk "$TARGET_DISK" 2>&1 || true
+		fi
+		partprobe "$TARGET_DISK" 2>/dev/null || blockdev --rereadpt "$TARGET_DISK" 2>/dev/null || true
+		sync
+		sleep 2
+	fi
+
+	# Resolve partition paths (e.g. /dev/sda1 or /dev/nvme0n1p1)
+	PART_PREFIX="$TARGET_DISK"
+	[[ "$TARGET_DISK" =~ [0-9]$ ]] && PART_PREFIX="${TARGET_DISK}p"
+	EFI_PART="${PART_PREFIX}1"
+	ROOT_PART="${PART_PREFIX}2"
+
+	for i in 1 2 3 4 5; do
+		[[ -b "$EFI_PART" && -b "$ROOT_PART" ]] && break
+		partprobe "$TARGET_DISK" 2>/dev/null || true
+		sleep 1
+	done
+	[[ ! -b "$ROOT_PART" ]] && ROOT_PART="${PART_PREFIX}1"
+
+	# 2. Formatting
+	echo -e "${C_CYAN}[2/7] Memformat partisi EFI ($EFI_PART) dan Root ($ROOT_PART) ...${C_RESET}"
+	for m in nls_cp437 nls_ascii nls_iso8859-1 nls_utf8 fat vfat; do
+		modprobe "$m" 2>/dev/null || true
+	done
+	for d in /boot/apollo/modules /lib/modules/fat /tmp/fat_modules /usr/lib/modules/$(uname -r)/kernel/fs; do
+		if [ -d "$d" ]; then
+			insmod "$d/nls_cp437.ko" 2>/dev/null || insmod "$d/nls/nls_cp437.ko" 2>/dev/null || true
+			insmod "$d/nls_ascii.ko" 2>/dev/null || insmod "$d/nls/nls_ascii.ko" 2>/dev/null || true
+			insmod "$d/nls_iso8859-1.ko" 2>/dev/null || insmod "$d/nls/nls_iso8859-1.ko" 2>/dev/null || true
+			insmod "$d/nls_utf8.ko" 2>/dev/null || insmod "$d/nls/nls_utf8.ko" 2>/dev/null || true
+			insmod "$d/fat.ko" 2>/dev/null || insmod "$d/fat/fat.ko" 2>/dev/null || true
+			insmod "$d/vfat.ko" 2>/dev/null || insmod "$d/fat/vfat.ko" 2>/dev/null || true
+		fi
+	done
+	if [[ -b "$EFI_PART" && "$EFI_PART" != "$ROOT_PART" ]]; then
+		mkfs.fat -F 32 "$EFI_PART" 2>/dev/null || mkfs.vfat -F 32 "$EFI_PART" 2>/dev/null || /bin/mkfs.fat -F 32 "$EFI_PART" 2>/dev/null || true
+	fi
+	mke2fs -F -L "MitraOS" "$ROOT_PART" 2>/dev/null || true
+
+	# 3. Mount Target
+	echo -e "${C_CYAN}[3/7] Melakukan mount target ke $TARGET_MNT ...${C_RESET}"
+	umount -R "$TARGET_MNT" 2>/dev/null || true
+	mkdir -p "$TARGET_MNT"
+	mount "$ROOT_PART" "$TARGET_MNT"
+
+	if [[ -b "$EFI_PART" && "$EFI_PART" != "$ROOT_PART" ]]; then
+		mkdir -p "$TARGET_MNT/boot/efi"
+		mount -t vfat "$EFI_PART" "$TARGET_MNT/boot/efi" 2>/dev/null || mount "$EFI_PART" "$TARGET_MNT/boot/efi" 2>/dev/null || true
+		if grep -q "$TARGET_MNT/boot/efi" /proc/mounts; then
+			echo -e "${C_GREEN}    [✓] Partisi EFI ($EFI_PART) berhasil di-mount sebagai vfat.${C_RESET}"
+		else
+			echo -e "${C_RED}    [!] Peringatan: Gagal me-mount partisi EFI ($EFI_PART)!${C_RESET}"
+		fi
+	fi
+
+	# 4. Copy Root Filesystem
+	echo -e "${C_CYAN}[4/7] Menyalin sistem berkas MitraOS ke disk target ...${C_RESET}"
+	for dir in bin sbin lib lib64 usr etc root home var opt; do
+		if [[ -d "/$dir" ]]; then
+			mkdir -p "$TARGET_MNT/$dir"
+			cp -a "/$dir"/* "$TARGET_MNT/$dir/" 2>/dev/null || true
+		fi
+	done
+
+	mkdir -p "$TARGET_MNT/boot/apollo" "$TARGET_MNT/boot/grub" "$TARGET_MNT/boot/efi" \
+	         "$TARGET_MNT/dev" "$TARGET_MNT/proc" "$TARGET_MNT/sys" "$TARGET_MNT/tmp" "$TARGET_MNT/run" "$TARGET_MNT/mnt"
+	chmod 1777 "$TARGET_MNT/tmp"
+
+	# Install kernel & initrd
+	echo -e "${C_CYAN}    Memasang Kernel Linux dan Ramdisk ...${C_RESET}"
+	if [[ -f /cdrom/boot/vmlinuz ]]; then
+		cp /cdrom/boot/vmlinuz "$TARGET_MNT/boot/vmlinuz" 2>/dev/null || true
+	elif [[ -f /boot/vmlinuz ]]; then
+		cp /boot/vmlinuz "$TARGET_MNT/boot/vmlinuz" 2>/dev/null || true
+	fi
+
+	if [[ -f /cdrom/boot/initrd.img ]]; then
+		cp /cdrom/boot/initrd.img "$TARGET_MNT/boot/initrd.img" 2>/dev/null || true
+	elif [[ -f /boot/initrd.img ]]; then
+		cp /boot/initrd.img "$TARGET_MNT/boot/initrd.img" 2>/dev/null || true
+	fi
+
+	# Copy core MitraOS / Apollo toolchain cleanly
+	mkdir -p "$TARGET_MNT/boot/apollo" "$TARGET_MNT/etc/dropbear" "$TARGET_MNT/usr/sbin" "$TARGET_MNT/bin" "$TARGET_MNT/usr/bin"
+	if [[ -d '/boot/apollo' ]]; then
+		cp -rf /boot/apollo/* "$TARGET_MNT/boot/apollo/" 2>/dev/null || true
+		chmod 755 "$TARGET_MNT/boot/apollo/"* 2>/dev/null || true
+	fi
+
+	# Create clean symlinks in /bin and /usr/bin for all tools without truncation risk
+	for tool in "$TARGET_MNT/boot/apollo"/*; do
+		[[ -f "$tool" ]] || continue
+		btool="$(basename "$tool")"
+		rm -f "$TARGET_MNT/bin/$btool" "$TARGET_MNT/usr/bin/$btool" 2>/dev/null || true
+		ln -sf "/boot/apollo/$btool" "$TARGET_MNT/bin/$btool" 2>/dev/null || true
+		ln -sf "/boot/apollo/$btool" "$TARGET_MNT/usr/bin/$btool" 2>/dev/null || true
+	done
+
+	# Copy Dropbear SSH server and permanent host keys
+	cp -a /etc/dropbear/* "$TARGET_MNT/etc/dropbear/" 2>/dev/null || true
+	chmod 700 "$TARGET_MNT/etc/dropbear" 2>/dev/null || true
+	chmod 600 "$TARGET_MNT/etc/dropbear/"* 2>/dev/null || true
+	for db_bin in dropbear dbclient dropbearkey; do
+		for p in /usr/sbin /sbin /usr/bin /bin; do
+			[ -f "$p/$db_bin" ] && cp -a "$p/$db_bin" "$TARGET_MNT/usr/sbin/" 2>/dev/null && cp -a "$p/$db_bin" "$TARGET_MNT/bin/" 2>/dev/null || true
+		done
+	done
+
+	# Ensure target system has fat and nls filesystem modules for UEFI / FAT32 support
+	mkdir -p "$TARGET_MNT/usr/lib/modules/6.1.0-52-amd64/kernel/fs/fat" "$TARGET_MNT/usr/lib/modules/6.1.0-52-amd64/kernel/fs/nls"
+	cp /tmp/fat_modules/*fat.ko "$TARGET_MNT/usr/lib/modules/6.1.0-52-amd64/kernel/fs/fat/" 2>/dev/null || true
+	cp /tmp/fat_modules/msdos.ko "$TARGET_MNT/usr/lib/modules/6.1.0-52-amd64/kernel/fs/fat/" 2>/dev/null || true
+	cp /tmp/fat_modules/nls_*.ko "$TARGET_MNT/usr/lib/modules/6.1.0-52-amd64/kernel/fs/nls/" 2>/dev/null || true
+	chroot "$TARGET_MNT" depmod -a 2>/dev/null || true
+
+	# 5. Configure System
+	echo -e "${C_CYAN}[5/7] Menerapkan konfigurasi sistem (fstab, hostname, user, init) ...${C_RESET}"
+	echo "$SYS_HOSTNAME" > "$TARGET_MNT/etc/hostname"
+
+	cat > "$TARGET_MNT/etc/hosts" <<-EOF
+	127.0.0.1   localhost
+	127.0.1.1   $SYS_HOSTNAME
+	::1         localhost ip6-localhost ip6-loopback
+	EOF
+
+	# fstab: Root & Virtual FS (pass number 0 0 for fast clean boot)
+	cat > "$TARGET_MNT/etc/fstab" <<-EOF
+	# /etc/fstab: MitraOS Static File System Information
+	$ROOT_PART    /          ext4   defaults,noatime,errors=remount-ro  0  0
+	EOF
+	if [[ -b "$EFI_PART" && "$EFI_PART" != "$ROOT_PART" ]]; then
+		echo "$EFI_PART    /boot/efi  vfat   defaults,noatime                    0  0" >> "$TARGET_MNT/etc/fstab"
+	fi
+	cat >> "$TARGET_MNT/etc/fstab" <<-EOF
+	tmpfs         /tmp       tmpfs  defaults,noatime,nosuid             0  0
+	tmpfs         /run       tmpfs  defaults,noatime,nosuid             0  0
+	EOF
+
+	# User Account & Password Hashing (SHA-512)
+	echo 'export PS1="\[\033[01;31m\]root\[\033[00m\]@\[\033[01;36m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]# "' > "$TARGET_MNT/root/.bashrc"
+	PASS_HASH=$(busybox mkpasswd -m sha-512 "$USER_PASSWORD" 2>/dev/null || mkpasswd -m sha-512 "$USER_PASSWORD" 2>/dev/null || echo '$5$G2MiFhsRiii1ZeTj$cjg3/jnPrryfcMfXqhntzJpgo6tToCTrv.qA6J9j7I.')
+	ROOT_HASH=$(busybox mkpasswd -m sha-512 "$ROOT_PASSWORD" 2>/dev/null || mkpasswd -m sha-512 "$ROOT_PASSWORD" 2>/dev/null || echo "$PASS_HASH")
+
+	# Write /etc/shadow
+	cat <<- EOF_SHADOW > "$TARGET_MNT/etc/shadow"
+	root:${ROOT_HASH}:19700:0:99999:7:::
+	daemon:*:19700:0:99999:7:::
+	bin:*:19700:0:99999:7:::
+	sys:*:19700:0:99999:7:::
+	nobody:*:19700:0:99999:7:::
+	${SYS_USERNAME}:${PASS_HASH}:19700:0:99999:7:::
+	EOF_SHADOW
+	chmod 600 "$TARGET_MNT/etc/shadow" 2>/dev/null || true
+
+	# Write /etc/passwd
+	cat <<- EOF_PASSWD > "$TARGET_MNT/etc/passwd"
+	root:x:0:0:root:/root:/bin/bash
+	daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+	bin:x:2:2:bin:/bin:/usr/sbin/nologin
+	sys:x:3:3:sys:/dev:/usr/sbin/nologin
+	nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+	${SYS_USERNAME}:x:1000:1000:${SYS_FULLNAME}:/home/${SYS_USERNAME}:/bin/bash
+	EOF_PASSWD
+	chmod 644 "$TARGET_MNT/etc/passwd" 2>/dev/null || true
+
+	# Write /etc/group
+	cat <<- EOF_GROUP > "$TARGET_MNT/etc/group"
+	root:x:0:
+	daemon:x:1:
+	bin:x:2:
+	sys:x:3:
+	adm:x:4:${SYS_USERNAME}
+	sudo:x:27:${SYS_USERNAME}
+	wheel:x:10:${SYS_USERNAME}
+	nogroup:x:65534:
+	${SYS_USERNAME}:x:1000:
+	EOF_GROUP
+	chmod 644 "$TARGET_MNT/etc/group" 2>/dev/null || true
+
+	# Create home directory with profile
+	mkdir -p "$TARGET_MNT/home/$SYS_USERNAME"
+	cat <<- USER_BASHRC_EOF > "$TARGET_MNT/home/$SYS_USERNAME/.bashrc"
+	[ -f /etc/profile ] && . /etc/profile
+	export PS1='\[\033[01;32m\]${SYS_USERNAME}\[\033[00m\]@\[\033[01;36m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+	USER_BASHRC_EOF
+	chown -R 1000:1000 "$TARGET_MNT/home/$SYS_USERNAME" 2>/dev/null || true
+	chmod 750 "$TARGET_MNT/home/$SYS_USERNAME" 2>/dev/null || true
+
+	# Setup /etc/profile for identical clean banner presentation on installed system
+	cat << 'PROFILE_EOF' > "$TARGET_MNT/etc/profile"
+export PATH="/boot/apollo:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export TERM="linux"
+export SHELL="/bin/bash"
+
+# Dynamic colored prompt based on logged-in user
+if [ "$(id -u 2>/dev/null || echo 1)" -eq 0 ]; then
+	export PS1='\[\033[01;31m\]\u\[\033[00m\]@\[\033[01;36m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]# '
+else
+	export PS1='\[\033[01;32m\]\u\[\033[00m\]@\[\033[01;36m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]$ '
+fi
+
+clear() {
+	printf '\033[2J\033[H'
+}
+alias cls='clear'
+
+# Display MitraOS system banner upon interactive login (Clear screen first to wipe login prompts)
+if [ -z "$MITRA_BANNER_SHOWN" ]; then
+	export MITRA_BANNER_SHOWN=1
+	printf '\033[2J\033[H'
+	if [ -x /boot/apollo/mitra-banner ]; then
+		/boot/apollo/mitra-banner 0 2>/dev/null || true
+	elif [ -x /bin/mitra-banner ]; then
+		/bin/mitra-banner 0 2>/dev/null || true
+	fi
+fi
+PROFILE_EOF
+	chmod 644 "$TARGET_MNT/etc/profile"
+	echo "[ -f /etc/profile ] && . /etc/profile" >> "$TARGET_MNT/root/.bashrc"
+	[[ -n "$SYS_USERNAME" && "$SYS_USERNAME" != "root" ]] && echo "[ -f /etc/profile ] && . /etc/profile" >> "$TARGET_MNT/home/$SYS_USERNAME/.bashrc" 2>/dev/null || true
+	> "$TARGET_MNT/etc/motd" 2>/dev/null || true
+	> "$TARGET_MNT/etc/issue" 2>/dev/null || true
+	> "$TARGET_MNT/etc/issue.net" 2>/dev/null || true
+
+	# Zero-Timeout Standby Login Session
+	cat << 'LOGIN_SESS_EOF' > "$TARGET_MNT/sbin/mitra-login-session"
+#!/bin/bash
+export PATH="/boot/apollo:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export TERM="linux"
+export SHELL="/bin/bash"
+
+while true; do
+	clear
+	if [ -f /etc/issue ] && [ -s /etc/issue ]; then
+		cat /etc/issue
+	elif [ -x /boot/apollo/mitra-banner ]; then
+		/boot/apollo/mitra-banner 0 2>/dev/null || true
+	fi
+	echo ""
+	HNAME=$(cat /etc/hostname 2>/dev/null)
+	[ -z "$HNAME" ] && HNAME="mitraOS"
+	printf "%s login: " "$HNAME"
+	read -r U_INPUT
+	[ -z "$U_INPUT" ] && continue
+	/bin/busybox login "$U_INPUT"
+	sleep 1
+done
+LOGIN_SESS_EOF
+	chmod 755 "$TARGET_MNT/sbin/mitra-login-session"
+
+	# Installed /sbin/init script
+	cat << 'INIT_EOF' > "$TARGET_MNT/sbin/init"
+#!/bin/bash
+export PATH="/boot/apollo:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export TERM="linux"
+export SHELL="/bin/bash"
+
+# Set system hostname
+[ -f /etc/hostname ] && hostname -F /etc/hostname 2>/dev/null || hostname mitraos 2>/dev/null || true
+
+# Mount virtual filesystems
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mount -o remount,rw / 2>/dev/null || true
+mount -t tmpfs tmpfs /run 2>/dev/null || true
+mount -t tmpfs tmpfs /tmp 2>/dev/null || true
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+
+# Module resolution
+[ -d /usr/lib/modules ] && [ ! -e /lib/modules ] && ln -sf /usr/lib/modules /lib/modules 2>/dev/null || true
+modprobe ext4 2>/dev/null || true
+modprobe hv_netvsc 2>/dev/null || true
+modprobe virtio_net 2>/dev/null || true
+modprobe e1000 2>/dev/null || true
+modprobe e1000e 2>/dev/null || true
+for m in nls_cp437 nls_ascii nls_iso8859-1 nls_utf8 fat vfat; do
+	modprobe "$m" 2>/dev/null || true
+done
+for m in /boot/apollo/modules/*.ko /lib/modules/fat/*.ko; do
+	[ -f "$m" ] && insmod "$m" 2>/dev/null || true
+done
+mount -a 2>/dev/null || true
+
+# Network initialization
+ip link set lo up 2>/dev/null || true
+ip link set eth0 up 2>/dev/null || true
+INIT_EOF
+
+	if [[ "$NET_MODE" == "static" ]]; then
+		cat << NET_STATIC_EOF >> "$TARGET_MNT/sbin/init"
+ifconfig eth0 $NET_IP up 2>/dev/null || ip addr add $NET_IP dev eth0 2>/dev/null || true
+route add default gw $NET_GW 2>/dev/null || ip route add default via $NET_GW dev eth0 2>/dev/null || true
+echo "nameserver $NET_DNS" > /etc/resolv.conf 2>/dev/null || true
+NET_STATIC_EOF
+	else
+		cat << 'NET_DHCP_EOF' >> "$TARGET_MNT/sbin/init"
+udhcpc -i eth0 -n -q -s /usr/share/udhcpc/default.script 2>/dev/null || udhcpc -i eth0 -n -q 2>/dev/null || true
+echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || true
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf 2>/dev/null || true
+NET_DHCP_EOF
+	fi
+
+	if [[ "$SSH_CHOICE" == "enable" ]]; then
+		cat << 'INIT_SSH_EOF' >> "$TARGET_MNT/sbin/init"
+# Start Dropbear SSH Daemon on Port 22 (Enabled by user during installation)
+mkdir -p /etc/dropbear
+chmod 700 /etc/dropbear 2>/dev/null || true
+chmod 600 /etc/dropbear/* 2>/dev/null || true
+if ! pidof dropbear >/dev/null 2>&1; then
+	if [ -x /usr/sbin/dropbear ]; then
+		/usr/sbin/dropbear -R -B -p 22 2>/dev/null &
+	elif [ -x /sbin/dropbear ]; then
+		/sbin/dropbear -R -B -p 22 2>/dev/null &
+	elif [ -x /bin/dropbear ]; then
+		/bin/dropbear -R -B -p 22 2>/dev/null &
+	fi
+fi
+
+# SSH Persistent Watchdog
+(
+	while true; do
+		sleep 5
+		if ! pidof dropbear >/dev/null 2>&1; then
+			[ -x /usr/sbin/dropbear ] && /usr/sbin/dropbear -R -B -p 22 2>/dev/null &
+		fi
+	done
+) &
+INIT_SSH_EOF
+	else
+		cat << 'INIT_SSH_EOF' >> "$TARGET_MNT/sbin/init"
+# SSH Server was DISABLED by user during installation for system security.
+# To start or configure SSH at any time, run 'mitra-ssh' or launch 'mitra'.
+chmod 700 /etc/dropbear 2>/dev/null || true
+chmod 600 /etc/dropbear/* 2>/dev/null || true
+INIT_SSH_EOF
+	fi
+
+	cat << 'INIT_TAIL_EOF' >> "$TARGET_MNT/sbin/init"
+# Generate pre-login issue banner
+if [ -x /boot/apollo/mitra-banner ]; then
+	/boot/apollo/mitra-banner 0 > /etc/issue 2>/dev/null || true
+fi
+
+# Dynamic pre-login issue updater (refreshes IP and metrics in background)
+(
+	while true; do
+		sleep 20
+		if [ -x /boot/apollo/mitra-banner ]; then
+			/boot/apollo/mitra-banner 0 > /etc/issue.tmp 2>/dev/null && mv -f /etc/issue.tmp /etc/issue 2>/dev/null || true
+		fi
+	done
+) &
+
+# Interactive terminal login session (Zero-Timeout, Clean Standby)
+while true; do
+	/bin/busybox setsid /bin/busybox cttyhack /sbin/mitra-login-session
+	sleep 1
+done
+INIT_TAIL_EOF
+
+	chmod 755 "$TARGET_MNT/sbin/init"
+
+	# Install shutdown & reboot helpers
+	for cmd in shutdown reboot poweroff; do
+		cat <<- 'EOF_CMD' > "$TARGET_MNT/bin/$cmd"
+		#!/bin/bash
+		sync
+		action="$(basename "$0")"
+		if [[ "$action" == "reboot" || "$*" =~ -r|--reboot ]]; then
+			echo "Memulai ulang sistem MitraOS..."
+			echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+			busybox reboot -f 2>/dev/null || /bin/busybox reboot -f 2>/dev/null || echo b > /proc/sysrq-trigger
+		else
+			echo "Mematikan sistem MitraOS..."
+			echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+			busybox poweroff -f 2>/dev/null || /bin/busybox poweroff -f 2>/dev/null || echo o > /proc/sysrq-trigger
+		fi
+		EOF_CMD
+		chmod 755 "$TARGET_MNT/bin/$cmd"
+		ln -sf "/bin/$cmd" "$TARGET_MNT/sbin/$cmd" 2>/dev/null || true
+		ln -sf "/bin/$cmd" "$TARGET_MNT/usr/bin/$cmd" 2>/dev/null || true
+		ln -sf "/bin/$cmd" "$TARGET_MNT/usr/sbin/$cmd" 2>/dev/null || true
+	done
+
+	# Mark installed
+	touch "$TARGET_MNT/etc/mitraos_installed"
+	touch "$TARGET_MNT/etc/apollo_installed"
+	rm -f "$TARGET_MNT/etc/mitra_live" "$TARGET_MNT/etc/apollo_live" 2>/dev/null || true
+	ln -sf /usr/sbin/fsck.ext4 "$TARGET_MNT/bin/fsck.ext2" 2>/dev/null || true
+
+	# Ensure SUID bit on sudo and busybox so created user can elevate privileges seamlessly
+	chown root:root "$TARGET_MNT/bin/sudo" "$TARGET_MNT/boot/apollo/sudo" "$TARGET_MNT/bin/busybox" 2>/dev/null || true
+	chmod 4755 "$TARGET_MNT/bin/sudo" "$TARGET_MNT/boot/apollo/sudo" "$TARGET_MNT/bin/busybox" 2>/dev/null || true
+
+	# 6. Swap Setup
+	echo -e "${C_CYAN}[6/7] Menyiapkan alokasi swap memory ($SWAP_CHOICE) ...${C_RESET}"
+	if [[ "$SWAP_CHOICE" =~ ^file_ ]] && grep -q " $TARGET_MNT " /proc/mounts; then
+		fallocate -l 1G "$TARGET_MNT/swapfile" 2>/dev/null || dd if=/dev/zero of="$TARGET_MNT/swapfile" bs=1M count=1024 2>/dev/null || true
+		chmod 600 "$TARGET_MNT/swapfile" 2>/dev/null || true
+		mkswap "$TARGET_MNT/swapfile" >/dev/null 2>&1 || true
+		echo "/swapfile    none        swap    sw                  0  0" >> "$TARGET_MNT/etc/fstab"
+	fi
+
+	# 7. Bootloader installation
+	echo -e "${C_CYAN}[7/7] Memasang bootloader GRUB UEFI pada $TARGET_DISK ...${C_RESET}"
+	if [[ -b "$EFI_PART" && "$EFI_PART" != "$ROOT_PART" ]]; then
+		if ! grep -q "$TARGET_MNT/boot/efi" /proc/mounts; then
+			mkdir -p "$TARGET_MNT/boot/efi"
+			mount -t vfat "$EFI_PART" "$TARGET_MNT/boot/efi" 2>/dev/null || mount "$EFI_PART" "$TARGET_MNT/boot/efi" 2>/dev/null || true
+		fi
+	fi
+	mkdir -p "$TARGET_MNT/boot/efi/EFI/BOOT"
+	mkdir -p "$TARGET_MNT/boot/efi/EFI/mitraos"
+	mkdir -p "$TARGET_MNT/boot/efi/boot/grub"
+	mkdir -p "$TARGET_MNT/boot/grub"
+
+	EFI_FOUND=0
+	for efi_candidate in /boot/apollo/BOOTX64.EFI /apollo/tools/BOOTX64.EFI /cdrom/EFI/BOOT/BOOTX64.EFI /cdrom/efi/boot/bootx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI /boot/BOOTX64.EFI /cdrom/boot/grub/BOOTX64.EFI /bin/BOOTX64.EFI /usr/bin/BOOTX64.EFI /cdrom/apollo/tools/BOOTX64.EFI; do
+		if [[ -f "$efi_candidate" ]]; then
+			cp -a "$efi_candidate" "$TARGET_MNT/boot/efi/EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
+			cp -a "$efi_candidate" "$TARGET_MNT/boot/efi/EFI/BOOT/bootx64.efi" 2>/dev/null || true
+			cp -a "$efi_candidate" "$TARGET_MNT/boot/efi/EFI/mitraos/BOOTX64.EFI" 2>/dev/null || true
+			EFI_FOUND=1
+			echo -e "${C_GREEN}    [✓] BOOTX64.EFI berhasil disalin dari $efi_candidate ke partisi EFI.${C_RESET}"
+			break
+		fi
+	done
+	if [[ $EFI_FOUND -eq 0 ]]; then
+		echo -e "${C_RED}    [!] Peringatan: BOOTX64.EFI tidak ditemukan di media instalasi!${C_RESET}"
+	fi
+
+	cat << 'EOF_GRUB' > "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg"
+insmod part_gpt
+insmod ext2
+insmod fat
+insmod efi_gop
+insmod efi_uga
+insmod font
+insmod gfxterm
+
+set default="0"
+set timeout=3
+
+set menu_color_normal=cyan/black
+set menu_color_highlight=white/blue
+
+search --no-floppy --label --set=root MitraOS
+if [ -z "$root" ]; then
+    search --no-floppy --file --set=root /boot/vmlinuz
+fi
+
+menuentry "MitraOS V.1 (Apollo) - Enterprise Workstation" --class debian --class gnu-linux --class os {
+    linux /boot/vmlinuz root=ROOT_PART_PLACEHOLDER rootfstype=ext4 fastboot fsck.mode=skip rw quiet mitraos_installed=1 init=/sbin/init
+    initrd /boot/initrd.img
+}
+
+menuentry "MitraOS V.1 (Apollo) - Safe Recovery Console" --class debian --class gnu-linux --class os {
+    linux /boot/vmlinuz root=ROOT_PART_PLACEHOLDER rootfstype=ext4 fastboot fsck.mode=skip rw single init=/sbin/init
+    initrd /boot/initrd.img
+}
+EOF_GRUB
+
+	sed -i "s|ROOT_PART_PLACEHOLDER|$ROOT_PART|g" "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg"
+	cp "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg" "$TARGET_MNT/boot/efi/boot/grub/grub.cfg" 2>/dev/null || true
+	cp "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg" "$TARGET_MNT/boot/efi/grub.cfg" 2>/dev/null || true
+	cp "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg" "$TARGET_MNT/boot/efi/EFI/mitraos/grub.cfg" 2>/dev/null || true
+	cp "$TARGET_MNT/boot/efi/EFI/BOOT/grub.cfg" "$TARGET_MNT/boot/grub/grub.cfg" 2>/dev/null || true
+
+
+	# Self-Cleaning Installer from Target Disk
+	rm -f "$TARGET_MNT/boot/apollo/mitra-installer"
+	rm -f "$TARGET_MNT/boot/apollo/mitra-disk_installer"
+	rm -f "$TARGET_MNT/bin/mitra-installer" 2>/dev/null || true
+	rm -f "$TARGET_MNT/usr/bin/mitra-installer" 2>/dev/null || true
+
+	sync
+	echo -e "\n${C_GREEN_BOLD}[✓] Instalasi MitraOS ke $TARGET_DISK Berhasil Selesai!${C_RESET}\n"
+	sleep 2
+
+	# =========================================================================
+	# STEP 17. REBOOT
+	# =========================================================================
+	REBOOT_MSG="INSTALASI MITRAOS V.1 TELAH SELESAI!\n\n"
+	REBOOT_MSG+="Sistem operasi MitraOS telah berhasil ditulis ke media disk:\n"
+	REBOOT_MSG+="  Disk Target : $TARGET_DISK\n"
+	REBOOT_MSG+="  Hostname    : $SYS_HOSTNAME\n"
+	REBOOT_MSG+="  User Akun   : $SYS_USERNAME\n\n"
+	REBOOT_MSG+="Silakan lepaskan USB flashdisk / keluarkan media ISO instalasi,\n"
+	REBOOT_MSG+="kemudian pilih [Reboot] untuk memulai sistem operasi baru Anda."
+
+	if [[ $AUTO_MODE -eq 1 ]]; then
+		echo -e "\n$REBOOT_MSG\n"
+		echo -e "${C_GREEN}[✓] MitraOS siap untuk reboot mandiri dari hard disk virtual ($TARGET_DISK).${C_RESET}"
+		REBOOT_CHOICE="shell"
+	elif [[ -n "$TUI_TOOL" ]]; then
+		REBOOT_CHOICE=$($TUI_TOOL --title "MitraOS INSTALLER - 17/17 Reboot" \
+			--menu "$REBOOT_MSG" 18 76 2 \
+			"reboot" "Reboot Komputer Sekarang (Rekomendasi)" \
+			"shell"  "Kembali ke Live Terminal Console" \
+			3>&1 1>&2 2>&3)
+	else
+		echo -e "\n$REBOOT_MSG"
+		read -r -p "Reboot sekarang? [Y/n]: " r_ans
+		[[ "$r_ans" =~ ^[Nn]$ ]] && REBOOT_CHOICE="shell" || REBOOT_CHOICE="reboot"
+	fi
+
+	umount -R "$TARGET_MNT" 2>/dev/null || true
+
+	if [[ "$REBOOT_CHOICE" == "reboot" ]]; then
+		echo -e "\n${C_ORANGE}Memulai restart sistem...${C_RESET}"
+		sleep 1
+		reboot || systemctl reboot || busybox reboot
+	else
+		echo -e "\n${C_GREEN}Kembali ke Live Console. Jalankan 'reboot' kapan saja untuk memulai sistem.${C_RESET}\n"
+		G_EXIT_BANNER
+	fi
+}

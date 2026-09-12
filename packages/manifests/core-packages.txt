@@ -1,0 +1,16 @@
+# MitraOS Core System Packages
+whiptail
+dialog
+dropbear
+fastfetch
+pciutils
+usbutils
+kmod
+htop
+tmux
+git
+net-tools
+dosfstools
+ntfs-3g
+exfat-fuse
+zram-tools

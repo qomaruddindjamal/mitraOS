@@ -1,0 +1,278 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Web Server, Database & SSL Manager
+	# Location: /boot/apollo/mitra-webserver
+	#//////////////////////////////////////////////////////////////////
+	# Manages:
+	# - LEMP Stack (Linux, Nginx, MariaDB, PHP-FPM)
+	# - LAMP Stack (Linux, Apache2, MariaDB, PHP)
+	# - Lighttpd Ultra-Light Stack (<5MB RAM for Pentium 4)
+	# - Node.js Web Application Server & PM2
+	# - Databases: MariaDB, PostgreSQL, Redis, SQLite3
+	# - Web GUI: phpMyAdmin & Adminer
+	# - Virtual Hosts & Let's Encrypt SSL (Certbot)
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Web Server Manager'
+	G_CHECK_ROOT_USER "$@"
+
+	# 1. Deploy LEMP Stack
+	install_lemp_stack()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying LEMP Stack (Nginx, MariaDB, PHP-FPM)..."
+		G_AGI nginx mariadb-server php-fpm php-mysql php-cli php-curl php-gd php-mbstring php-xml php-zip ufw
+
+		systemctl enable --now nginx
+		systemctl enable --now mariadb
+		local php_fpm_service
+		php_fpm_service=$(systemctl list-unit-files | grep -oE 'php[0-9.]+-fpm' | head -n 1)
+		[[ -n $php_fpm_service ]] && systemctl enable --now "$php_fpm_service"
+
+		# Configure UFW
+		ufw allow 80/tcp 2>/dev/null || true
+		ufw allow 443/tcp 2>/dev/null || true
+
+		G_APOLLO-NOTIFY 1 "LEMP Stack deployed successfully!"
+		G_WHIP_MSG "LEMP Stack Ready" "Nginx, MariaDB, and PHP-FPM have been installed & started.\n\nWeb root: /var/www/html\nHTTP accessible at: http://$(hostname -I | awk '{print $1}')"
+	}
+
+	# 2. Deploy LAMP Stack
+	install_lamp_stack()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying LAMP Stack (Apache2, MariaDB, PHP)..."
+		G_AGI apache2 mariadb-server php libapache2-mod-php php-mysql php-cli php-curl php-gd php-mbstring php-xml php-zip ufw
+
+		systemctl enable --now apache2
+		systemctl enable --now mariadb
+		a2enmod rewrite ssl headers 2>/dev/null || true
+		systemctl restart apache2
+
+		ufw allow 80/tcp 2>/dev/null || true
+		ufw allow 443/tcp 2>/dev/null || true
+
+		G_APOLLO-NOTIFY 1 "LAMP Stack deployed successfully!"
+		G_WHIP_MSG "LAMP Stack Ready" "Apache2, MariaDB, and PHP have been installed & started.\n\nWeb root: /var/www/html\nHTTP accessible at: http://$(hostname -I | awk '{print $1}')"
+	}
+
+	# 3. Deploy Lighttpd Ultra-Lightweight Stack (Pentium 4 Best Choice)
+	install_lighttpd_stack()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying Lighttpd Ultra-Lightweight Web Stack..."
+		# Consumes only ~3-5 MB RAM!
+		G_AGI lighttpd php-cgi php-sqlite3 sqlite3 ufw
+
+		lighty-enable-mod fastcgi 2>/dev/null || true
+		lighty-enable-mod fastcgi-php 2>/dev/null || true
+		systemctl enable --now lighttpd
+		systemctl restart lighttpd
+
+		ufw allow 80/tcp 2>/dev/null || true
+
+		G_APOLLO-NOTIFY 1 "Lighttpd Ultra-Light Stack deployed (Memory usage: <5MB RAM)!"
+		G_WHIP_MSG "Lighttpd Ready" "Lighttpd & FastCGI PHP installed.\nOptimized for Pentium 4 & low-spec systems.\nHTTP accessible at: http://$(hostname -I | awk '{print $1}')"
+	}
+
+	# 4. Deploy phpMyAdmin & Adminer Database GUI
+	install_database_gui()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying Web Database Admin Interfaces (Adminer & phpMyAdmin)..."
+
+		# 1. Adminer (Ultra-light ~450KB single file)
+		mkdir -p /var/www/html/adminer
+		curl -fsSL https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php -o /var/www/html/adminer/index.php 2>/dev/null || true
+		chmod 644 /var/www/html/adminer/index.php
+
+		# 2. phpMyAdmin
+		G_AGI phpmyadmin 2>/dev/null || true
+
+		G_WHIP_MSG "Database Web GUIs Ready" "Database Management Web Interfaces:\n\n1. Adminer (Ultra-Light): http://$(hostname -I | awk '{print $1}')/adminer/\n2. phpMyAdmin: http://$(hostname -I | awk '{print $1}')/phpmyadmin/"
+	}
+
+	# 5. Virtual Host & Domain Wizard
+	create_virtual_host()
+	{
+		local domain_name
+		domain_name=$($TUI_TOOL --title "New Website / Virtual Host Wizard" \
+			--inputbox "Enter the domain or website name (e.g., mysite.local or example.com):" 12 70 \
+			"mysite.local" 3>&1 1>&2 2>&3)
+		(( $? != 0 )) && return 0
+
+		[[ -z $domain_name ]] && return 0
+
+		local doc_root="/var/www/$domain_name"
+		mkdir -p "$doc_root"
+		chown -R www-data:www-data "$doc_root"
+		chmod -R 755 "$doc_root"
+
+		# Create sample index.php
+		cat << EOF > "$doc_root/index.php"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome to $domain_name - Apollo OS</title>
+    <style>
+        body { font-family: sans-serif; background: #1e222b; color: #fff; text-align: center; padding: 50px; }
+        h1 { color: #ff6f00; }
+        .box { background: #282c34; border: 1px solid #00d2ff; padding: 25px; border-radius: 8px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🚀 $domain_name</h1>
+        <p>Virtual Host successfully configured and running on <strong>Apollo OS</strong>.</p>
+        <p>Document Root: <code>$doc_root</code></p>
+        <p>PHP Version: <?php echo phpversion(); ?></p>
+    </div>
+</body>
+</html>
+EOF
+		chown www-data:www-data "$doc_root/index.php"
+
+		# Configure Nginx if active
+		if command -v nginx >/dev/null 2>&1; then
+			local fpm_sock
+			fpm_sock=$(find /run/php/ -name "*.sock" 2>/dev/null | head -n 1)
+			[[ -z $fpm_sock ]] && fpm_sock="/run/php/php-fpm.sock"
+
+			cat << EOF > "/etc/nginx/sites-available/$domain_name"
+server {
+    listen 80;
+    server_name $domain_name;
+    root $doc_root;
+    index index.php index.html;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:$fpm_sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOF
+			ln -sf "/etc/nginx/sites-available/$domain_name" "/etc/nginx/sites-enabled/$domain_name" 2>/dev/null || true
+			nginx -t 2>/dev/null && systemctl reload nginx
+		fi
+
+		# Configure Apache if active
+		if command -v apache2 >/dev/null 2>&1; then
+			cat << EOF > "/etc/apache2/sites-available/$domain_name.conf"
+<VirtualHost *:80>
+    ServerName $domain_name
+    DocumentRoot $doc_root
+    <Directory $doc_root>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    ErrorLog \${APACHE_LOG_DIR}/$domain_name_error.log
+    CustomLog \${APACHE_LOG_DIR}/$domain_name_access.log combined
+</VirtualHost>
+EOF
+			a2ensite "$domain_name.conf" 2>/dev/null || true
+			systemctl reload apache2 2>/dev/null || true
+		fi
+
+		G_WHIP_MSG "Virtual Host Created" "Website Virtual Host Created Successfully!\n\nDomain: $domain_name\nDocument Root: $doc_root\nOwner: www-data\n\nAdd '$domain_name' to your DNS or local /etc/hosts to browse."
+	}
+
+	# 6. Automatic SSL Certificate (Certbot Let's Encrypt)
+	setup_ssl_certbot()
+	{
+		G_APOLLO-NOTIFY -1 "Setting up Let's Encrypt SSL (Certbot)..."
+		G_AGI certbot python3-certbot-nginx python3-certbot-apache
+
+		local domain_name
+		domain_name=$($TUI_TOOL --title "Let's Encrypt SSL Setup" \
+			--inputbox "Enter domain name with public DNS pointing to this server:" 12 70 \
+			"example.com" 3>&1 1>&2 2>&3)
+		(( $? != 0 )) && return 0
+
+		if [[ -n $domain_name ]]; then
+			clear
+			echo -e "${C_CYAN}Requesting SSL certificate for $domain_name...${C_RESET}"
+			certbot --nginx -d "$domain_name" 2>/dev/null || certbot --apache -d "$domain_name" 2>/dev/null || certbot certonly --standalone -d "$domain_name"
+			read -r -p "Press Enter to continue..."
+		fi
+	}
+
+	# Main Interactive TUI Menu
+	while true; do
+		clear
+		CHOICE=$($TUI_TOOL --title "MitraOS - Web Server & Database Suite" \
+			--menu "Citra Media Technology & Mitra Utama Group\nPilih konfigurasi web stack atau basis data:" 20 76 10 \
+			"1" "LEMP Stack         : Deploy Nginx + MariaDB + PHP-FPM (High Performance)" \
+			"2" "LAMP Stack         : Deploy Apache2 + MariaDB + PHP (Classic Stack)" \
+			"3" "Lighttpd Stack     : Deploy Ultra-Lightweight Stack (<5MB RAM - Pentium 4)" \
+			"4" "Virtual Hosts      : Add New Website / Domain Configuration" \
+			"5" "Database Web GUIs  : Install phpMyAdmin & Adminer Web Consoles" \
+			"6" "PostgreSQL Engine  : Install PostgreSQL Advanced Relational DB" \
+			"7" "Redis Cache        : Install Redis In-Memory Cache & Key-Value Store" \
+			"8" "Let's Encrypt SSL  : Automated HTTPS Certificate Wizard (Certbot)" \
+			"9" "Server Status      : Check Web Server & Database Service Status" \
+			"0" "Kembali            : Kembali ke Menu Utama" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1) install_lemp_stack ;;
+			2) install_lamp_stack ;;
+			3) install_lighttpd_stack ;;
+			4) create_virtual_host ;;
+			5) install_database_gui ;;
+			6) G_AGI postgresql postgresql-contrib; systemctl enable --now postgresql; G_WHIP_MSG "PostgreSQL" "PostgreSQL Server is active on port 5432." ;;
+			7) G_AGI redis-server; systemctl enable --now redis-server; G_WHIP_MSG "Redis" "Redis Server is active on port 6379." ;;
+			8) setup_ssl_certbot ;;
+			9)
+				clear
+				echo -e "${C_ORANGE_BOLD}== Web Server & Database Service Status ==${C_RESET}\n"
+				systemctl status nginx apache2 lighttpd mariadb postgresql redis-server --no-pager 2>/dev/null || true
+				echo -e "\n${C_CYAN}Active Listening Web Ports:${C_RESET}"
+				ss -tlpn | grep -E ':(80|443|3306|5432|6379)' || true
+				read -r -p "Press Enter to return..."
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

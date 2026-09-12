@@ -1,0 +1,281 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Central Control Center & Launcher
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Location: /opt/mitraos/bin/mitra-launcher
+	#//////////////////////////////////////////////////////////////////
+
+	BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	_DIR="$BIN_DIR"
+
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	# Fallback functions if globals wasn't sourced
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "\n[$1] $2\n"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - Control Center'
+	G_CHECK_ROOT_USER "$@"
+	export MITRA_INSIDE_LAUNCHER=1
+
+	# Helper to find and run MitraOS tools
+	run_mitra_tool() {
+		local tool="$1"
+		shift
+		if [[ -x "$BIN_DIR/$tool" ]]; then
+			"$BIN_DIR/$tool" "$@"
+		elif [[ -x "/opt/mitraos/bin/$tool" ]]; then
+			"/opt/mitraos/bin/$tool" "$@"
+		elif [[ -x "/boot/mitraos/$tool" ]]; then
+			"/boot/mitraos/$tool" "$@"
+		elif [[ -x "/boot/apollo/$tool" ]]; then
+			"/boot/apollo/$tool" "$@"
+		elif command -v "$tool" >/dev/null 2>&1; then
+			"$tool" "$@"
+		else
+			G_WHIP_MSG "Pemberitahuan" "Alat '$tool' tidak ditemukan."
+		fi
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 1: System Preferences & Konfigurasi (23 Kategori)
+	# -----------------------------------------------------------------
+	submenu_preferences() {
+		run_mitra_tool "mitra-preferences"
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 2: Tampilan Desktop & Snap Layout
+	# -----------------------------------------------------------------
+	submenu_desktop_snap() {
+		while true; do
+			clear
+			local entries=(
+				"1" "mitra-desktop           : Desktop Style (macOS Dock & Top-bar / Win11 / Low-RAM)"
+				"2" "mitra-snap              : Window Snap Layout (Windows 11-style Precision Grid)"
+				"3" "mitra-wallpaper         : Pilih Wallpaper Resmi MitraOS"
+				"4" "mitra-autostart         : Boot Behavior, Auto-login & Kiosk Mode"
+				"0" "Kembali                 : Kembali ke Menu Utama"
+			)
+			local choice
+			choice=$(whiptail --title "MitraOS - Desktop & Snap Layout" \
+				--menu "Kelola tampilan antarmuka, tata letak jendela presisi, dan desktop:" 18 78 5 \
+				"${entries[@]}" 3>&1 1>&2 2>&3)
+			[[ $? -ne 0 || "$choice" == "0" || -z "$choice" ]] && break
+
+			case $choice in
+				1) run_mitra_tool "mitra-desktop" ;;
+				2) run_mitra_tool "mitra-snap" ;;
+				3) run_mitra_tool "mitra-desktop" --wallpaper ;;
+				4) run_mitra_tool "mitra-autostart" ;;
+			esac
+		done
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 3: Pengaturan Jaringan & Layanan Remote
+	# -----------------------------------------------------------------
+	submenu_network_remote() {
+		while true; do
+			clear
+			local ssh_status_tag="[NONAKTIF]"
+			local ssh_info="Nonaktif"
+			if pidof dropbear >/dev/null 2>&1 || pidof sshd >/dev/null 2>&1 || pgrep dropbear >/dev/null 2>&1 || pgrep sshd >/dev/null 2>&1; then
+				local curr_ip
+				curr_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+				[[ -z "$curr_ip" ]] && curr_ip=$(ip -o -4 addr show 2>/dev/null | grep -v ' 127\.' | awk '{print $4; exit}' | cut -d/ -f1)
+				[[ -z "$curr_ip" ]] && curr_ip="127.0.0.1"
+				ssh_status_tag="[AKTIF: Port 22]"
+				ssh_info="AKTIF (ssh root@${curr_ip} : Port 22)"
+			fi
+
+			local asisten_status_tag="[NONAKTIF]"
+			if [[ ! -f /tmp/webremote_disabled ]] && pidof cloudflared >/dev/null 2>&1 && pidof ttyd >/dev/null 2>&1; then
+				asisten_status_tag="[AKTIF: Web & SSH]"
+			fi
+
+			local entries=(
+				"1" "mitra-asisten           : Bantuan Remote (Web Browser & SSH) $asisten_status_tag"
+				"2" "mitra-ssh               : Remote Terminal & PuTTY (SSH Port 22) $ssh_status_tag"
+				"3" "mitra-services          : Background Daemons & Services Controller"
+				"4" "mitra-security          : Firewall, Hardening & Security Audit"
+				"0" "Kembali                 : Kembali ke Menu Utama"
+			)
+			local choice
+			choice=$(whiptail --title "MitraOS - Jaringan & Layanan Remote" \
+				--menu "Status Remote SSH : $ssh_info\nKelola akses jarak jauh dan konektivitas:" 17 78 5 \
+				"${entries[@]}" 3>&1 1>&2 2>&3)
+			[[ $? -ne 0 || "$choice" == "0" || -z "$choice" ]] && break
+
+			case $choice in
+				1) run_mitra_tool "mitra-asisten" ;;
+				2) run_mitra_tool "mitra-ssh" ;;
+				3) run_mitra_tool "mitra-services" ;;
+				4) run_mitra_tool "mitra-security" ;;
+			esac
+		done
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 4: Pusat Software & Aplikasi
+	# -----------------------------------------------------------------
+	submenu_software() {
+		run_mitra_tool "mitra-software"
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 5: Google Antigravity AI & Developer Hub
+	# -----------------------------------------------------------------
+	submenu_antigravity() {
+		run_mitra_tool "mitra-antigravity"
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 6: Web Server & Database Suite
+	# -----------------------------------------------------------------
+	submenu_webserver() {
+		run_mitra_tool "mitra-webserver"
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 7: Email Server Suite
+	# -----------------------------------------------------------------
+	submenu_mail() {
+		run_mitra_tool "mitra-mail"
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 8: Disk Installer & Media Pembuat Installer
+	# -----------------------------------------------------------------
+	submenu_installer() {
+		while true; do
+			clear
+			local entries=(
+				"1" "mitra-installer         : Pasang MitraOS ke Hard Disk / SSD / NVMe Target"
+				"2" "mitra-make-installer    : Buat USB / MicroSD Bootable Installer MitraOS"
+				"3" "mitra-drive_manager     : Kelola Partisi, Mount Point & Format Drive"
+				"0" "Kembali                 : Kembali ke Menu Utama"
+			)
+			local choice
+			choice=$(whiptail --title "MitraOS - Instalasi & Manajemen Disk" \
+				--menu "Pilih operasi instalasi sistem ke media penyimpanan:" 16 78 4 \
+				"${entries[@]}" 3>&1 1>&2 2>&3)
+			[[ $? -ne 0 || "$choice" == "0" || -z "$choice" ]] && break
+
+			case $choice in
+				1) run_mitra_tool "mitra-installer" ;;
+				2) run_mitra_tool "mitra-make-installer" ;;
+				3) run_mitra_tool "mitra-drive_manager" ;;
+			esac
+		done
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# SUBMENU 9: Pemeliharaan & Alat Sistem
+	# -----------------------------------------------------------------
+	submenu_maintenance() {
+		while true; do
+			clear
+			local entries=(
+				"1" "mitra-banner            : Tampilkan Monitor Telemetri Sistem Real-time"
+				"2" "mitra-cleaner           : Bersihkan Sampah, Cache & Ruang Disk"
+				"3" "mitra-backup            : Backup & Restore Data Konfigurasi"
+				"4" "mitra-update            : Periksa & Jalankan Pembaruan Sistem MitraOS"
+				"5" "mitra-terminal          : Buka Terminal Shell Berwarna"
+				"0" "Kembali                 : Kembali ke Menu Utama"
+			)
+			local choice
+			choice=$(whiptail --title "MitraOS - Pemeliharaan & Diagnostik Sistem" \
+				--menu "Pilih alat diagnostik dan pemeliharaan:" 18 78 6 \
+				"${entries[@]}" 3>&1 1>&2 2>&3)
+			[[ $? -ne 0 || "$choice" == "0" || -z "$choice" ]] && break
+
+			case $choice in
+				1) run_mitra_tool "mitra-banner" -w ;;
+				2) run_mitra_tool "mitra-cleaner" ;;
+				3) run_mitra_tool "mitra-backup" ;;
+				4) run_mitra_tool "mitra-update" ;;
+				5) run_mitra_tool "mitra-terminal" ;;
+			esac
+		done
+		clear
+	}
+
+	# -----------------------------------------------------------------
+	# MAIN MENU LOOP
+	# -----------------------------------------------------------------
+	while true; do
+		clear
+		local main_entries=(
+			"01" "🖥️  System Preferences     : 23 Menu Pengaturan Lengkap (Display, Sound, Users, dll)"
+			"02" "🍎  Desktop & Snap Layout   : Gaya macOS (Dock & Top-bar) + Windows 11 Snap Grid"
+			"03" "🤖  Antigravity AI Engine   : Google Antigravity Hub, CLI ('agy') & Agent MCP"
+			"04" "🌐  Jaringan & Remote Assist : Layanan Bantuan Web Browser & SSH Port 22"
+			"05" "📦  Pusat Software & Apps   : Paket Kurasi Office, Dev, Multimedia & Low-RAM"
+			"06" "🌐  Web Server & Database   : LEMP, LAMP, Lighttpd, MariaDB, phpMyAdmin & SSL"
+			"07" "📧  Email Server Suite      : SnappyMail Web Client & iRedMail Server"
+			"08" "💾  Instalasi Disk / USB    : Pasang MitraOS ke SSD/HDD/NVMe & Buat Installer"
+			"09" "🛠️  Pemeliharaan & Status   : Telemetry Monitor, Cleaner, Backup & Update"
+			"10" "🚪  Keluar ke Terminal      : Buka Bash Terminal MitraOS"
+			"11" "🔄  Restart Sistem          : Reboot Komputer"
+			"12" "🛑  Matikan Sistem          : Shutdown Komputer"
+		)
+
+		local main_choice
+		main_choice=$(whiptail --title "MitraOS V.1 (Apollo) - Central Control Center" \
+			--menu "Arsitektur : $G_HW_ARCH ($G_HW_ARCH_DESC) | Model : $G_HW_MODEL_NAME\nFounder    : Qomaruddin Djamal - Citra Media Technology & Mitra Utama Group\nNavigasi   : Gunakan Tombol Panah [Atas/Bawah] & [Enter] untuk memilih menu:" 22 80 12 \
+			"${main_entries[@]}" 3>&1 1>&2 2>&3)
+
+		[[ $? -ne 0 || "$main_choice" == "10" || -z "$main_choice" ]] && break
+
+		case "$main_choice" in
+			"01") submenu_preferences ;;
+			"02") submenu_desktop_snap ;;
+			"03") submenu_antigravity ;;
+			"04") submenu_network_remote ;;
+			"05") submenu_software ;;
+			"06") submenu_webserver ;;
+			"07") submenu_mail ;;
+			"08") submenu_installer ;;
+			"09") submenu_maintenance ;;
+			"11") run_mitra_tool "mitra-reboot" ;;
+			"12") run_mitra_tool "mitra-shutdown" ;;
+		esac
+	done
+
+	clear
+	G_EXIT_BANNER
+}

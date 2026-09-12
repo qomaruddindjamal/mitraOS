@@ -1,0 +1,10 @@
+#!/bin/bash
+# Backward-compatibility loader for Apollo globals
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [[ -f "$SCRIPT_DIR/mitra-globals" ]]; then
+	. "$SCRIPT_DIR/mitra-globals"
+elif [[ -f '/opt/mitraos/lib/mitra-globals' ]]; then
+	. '/opt/mitraos/lib/mitra-globals'
+elif [[ -f '/boot/mitraos/func/mitra-globals' ]]; then
+	. '/boot/mitraos/func/mitra-globals'
+fi

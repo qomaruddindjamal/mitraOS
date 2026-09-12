@@ -1,0 +1,3 @@
+#!/bin/bash
+# MitraOS Disk Installer Wrapper (points to canonical mitra-installer)
+exec "$(dirname "$0")/mitra-installer" "$@"

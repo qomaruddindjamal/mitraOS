@@ -1,0 +1,10 @@
+APT::Install-Recommends "false";
+APT::Install-Suggests "false";
+APT::AutoRemove::RecommendsImportant "false";
+APT::AutoRemove::SuggestsImportant "false";
+Acquire::Languages "none";
+Acquire::GzipIndexes "true";
+Acquire::IndexTargets::deb::Packages::KeepCompressedAs "xz";
+Dir::Cache::srcpkgcache "";
+DPkg::Post-Invoke { "rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb 2>/dev/null || true"; };
+APT::Update::Post-Invoke-Success { "rm -f /var/cache/apt/archives/*.deb 2>/dev/null || true"; };

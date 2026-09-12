@@ -1,0 +1,293 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Curated Multi-Ecosystem Software Catalog
+	# Location: /boot/apollo/mitra-software
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - Software Catalog'
+	G_CHECK_ROOT_USER "$@"
+
+	# 1. Office Suite Submenu
+	manage_office_suite()
+	{
+		while true; do
+			clear
+			local o_choice
+			o_choice=$($TUI_TOOL --title "Office & Productivity Suite" \
+				--menu "Pilih aplikasi perkantoran yang ingin dipasang:" 17 76 6 \
+				"1" "Microsoft Office 365 : Web Desktop Integration (Word, Excel, PowerPoint)" \
+				"2" "LibreOffice Full     : Writer, Calc, Impress, Draw (Standard Offline)" \
+				"3" "AbiWord & Gnumeric   : Ultra-light (~10MB RAM) for Pentium 4 / Low-Spec" \
+				"4" "PDF Document Viewers : Evince (GNOME) & MuPDF (Fast & Minimal)" \
+				"0" "Kembali              : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $o_choice in
+				1) [[ -x /boot/apollo/mitra-office365 ]] && /boot/apollo/mitra-office365 || { [[ -x /boot/apollo/mitra-apps ]] && /boot/apollo/mitra-apps --office365; } ;;
+				2) G_APOLLO-NOTIFY -1 "Installing LibreOffice Full Suite..."; G_AGI libreoffice libreoffice-gtk3; G_WHIP_MSG "Success" "LibreOffice installed successfully!" ;;
+				3) G_APOLLO-NOTIFY -1 "Installing AbiWord & Gnumeric (Ultra-Lightweight)..."; G_AGI abiword gnumeric; G_WHIP_MSG "Success" "AbiWord & Gnumeric installed! Ideal for low-spec PCs." ;;
+				4) G_APOLLO-NOTIFY -1 "Installing PDF & Document Viewers..."; G_AGI evince mupdf; G_WHIP_MSG "Success" "Evince and MuPDF PDF viewers installed." ;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 2. Graphics, Vector & Photo Suite Submenu
+	manage_graphics_suite()
+	{
+		while true; do
+			clear
+			local g_choice
+			g_choice=$($TUI_TOOL --title "Graphics, Vector Design & Photo Suite" \
+				--menu "Pilih aplikasi desain grafis yang ingin dipasang:" 18 76 7 \
+				"1" "Adobe Photoshop CS2  : Platinum Wine Edition (~40MB RAM - Pentium 4 Best)" \
+				"2" "Inkscape Vector      : Professional Vector Design (Illustrator / Corel Alt)" \
+				"3" "GIMP Photo Editor    : Advanced Raster Photo & Image Manipulation (Photoshop Alt)" \
+				"4" "Krita Painting       : Digital Painting, Concept Art & 2D Animation" \
+				"5" "MyPaint              : Fast & Distraction-free Digital Sketch Canvas" \
+				"6" "Screenshot & Viewers : Flameshot Annotation Tool & GPicView (~6MB RAM)" \
+				"0" "Kembali              : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $g_choice in
+				1) [[ -x /boot/apollo/mitra-apps ]] && /boot/apollo/mitra-apps --photoshop ;;
+				2) G_APOLLO-NOTIFY -1 "Installing Inkscape Vector Design..."; G_AGI inkscape; G_WHIP_MSG "Success" "Inkscape installed successfully!" ;;
+				3) G_APOLLO-NOTIFY -1 "Installing GIMP Photo Editor..."; G_AGI gimp; G_WHIP_MSG "Success" "GIMP installed successfully!" ;;
+				4) G_APOLLO-NOTIFY -1 "Installing Krita Digital Painting..."; G_AGI krita; G_WHIP_MSG "Success" "Krita installed successfully!" ;;
+				5) G_APOLLO-NOTIFY -1 "Installing MyPaint Sketch Canvas..."; G_AGI mypaint; G_WHIP_MSG "Success" "MyPaint installed successfully!" ;;
+				6) G_APOLLO-NOTIFY -1 "Installing Flameshot & GPicView..."; G_AGI flameshot gpicview imagemagick; G_WHIP_MSG "Success" "Flameshot, GPicView, and ImageMagick installed." ;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 3. Audio & Video Suite Submenu
+	manage_multimedia_suite()
+	{
+		while true; do
+			clear
+			local m_choice
+			m_choice=$($TUI_TOOL --title "Audio & Video Multimedia Suite" \
+				--menu "Pilih pemutar multimedia atau editor yang ingin dipasang:" 18 76 7 \
+				"1" "VLC Media Player     : Universal player for all audio & video formats" \
+				"2" "MPV Video Player     : Lightweight hardware-accelerated video player" \
+				"3" "Audacious Audio      : Ultra-light music player with Winamp theme (~7MB RAM)" \
+				"4" "Audacity Audio       : Multi-track audio recording & editing studio" \
+				"5" "FFmpeg Media Engine  : Industry-standard media converter & encoder" \
+				"6" "OBS Studio           : Screen recorder, presentation & live streaming" \
+				"7" "Complete Codecs Pack : Full GStreamer, libavcodec, VAAPI / VDPAU drivers" \
+				"0" "Kembali              : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $m_choice in
+				1) G_APOLLO-NOTIFY -1 "Installing VLC Media Player..."; G_AGI vlc; G_WHIP_MSG "Success" "VLC installed successfully!" ;;
+				2) G_APOLLO-NOTIFY -1 "Installing MPV Player..."; G_AGI mpv; G_WHIP_MSG "Success" "MPV installed successfully!" ;;
+				3) G_APOLLO-NOTIFY -1 "Installing Audacious Audio Player..."; G_AGI audacious audacious-plugins; G_WHIP_MSG "Success" "Audacious installed! Winamp skins supported." ;;
+				4) G_APOLLO-NOTIFY -1 "Installing Audacity Audio Editor..."; G_AGI audacity; G_WHIP_MSG "Success" "Audacity installed successfully!" ;;
+				5) G_APOLLO-NOTIFY -1 "Installing FFmpeg Engine..."; G_AGI ffmpeg; G_WHIP_MSG "Success" "FFmpeg installed successfully!" ;;
+				6) G_APOLLO-NOTIFY -1 "Installing OBS Studio..."; G_AGI obs-studio 2>/dev/null || true; G_WHIP_MSG "Notice" "OBS Studio installation completed." ;;
+				7) G_APOLLO-NOTIFY -1 "Installing Complete Multimedia Codecs..."; G_AGI gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav libavcodec-extra va-driver-all; G_WHIP_MSG "Success" "All multimedia codecs and hardware drivers installed!" ;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 4. Programming & Developer Suite Submenu
+	manage_programming_suite()
+	{
+		while true; do
+			clear
+			local p_choice
+			p_choice=$($TUI_TOOL --title "Programming & Developer Suite" \
+				--menu "Pilih bahasa pemrograman atau editor yang ingin dipasang:" 19 76 10 \
+				"1" "C / C++ Toolchain    : build-essential, gcc, g++, make, cmake, gdb" \
+				"2" "Python 3 Environment : python3, pip, virtualenv, python3-dev" \
+				"3" "Node.js & Web Dev    : Node.js LTS, NPM, Yarn" \
+				"4" "Go (Golang) Compiler : Official Go compiler & standard library" \
+				"5" "Rust Toolchain       : rustc compiler and cargo package manager" \
+				"6" "Java OpenJDK LTS     : OpenJDK JRE and JDK (Java 17/21)" \
+				"7" "Geany Ultra-Light IDE: Fast GTK code editor (~15MB RAM - Pentium 4 Best)" \
+				"8" "VSCodium / VS Code   : Modern extensible code editor" \
+				"9" "Git & GitHub Tools   : git, gh (GitHub CLI), tig" \
+				"0" "Kembali              : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $p_choice in
+				1) G_APOLLO-NOTIFY -1 "Installing C/C++ Build Toolchain..."; G_AGI build-essential gcc g++ make cmake gdb pkg-config; G_WHIP_MSG "Success" "GCC and C/C++ toolchain installed!" ;;
+				2) G_APOLLO-NOTIFY -1 "Installing Python 3 Environment..."; G_AGI python3 python3-pip python3-venv python3-dev; G_WHIP_MSG "Success" "Python 3 and Pip installed!" ;;
+				3) G_APOLLO-NOTIFY -1 "Installing Node.js & NPM..."; G_AGI nodejs npm; G_WHIP_MSG "Success" "Node.js $(node -v) and NPM installed!" ;;
+				4) G_APOLLO-NOTIFY -1 "Installing Go Compiler..."; G_AGI golang-go 2>/dev/null || true; G_WHIP_MSG "Success" "Go compiler installed!" ;;
+				5) G_APOLLO-NOTIFY -1 "Installing Rust & Cargo..."; G_AGI rustc cargo 2>/dev/null || true; G_WHIP_MSG "Success" "Rust and Cargo installed!" ;;
+				6) G_APOLLO-NOTIFY -1 "Installing Java OpenJDK LTS..."; G_AGI default-jdk default-jre; G_WHIP_MSG "Success" "Java OpenJDK installed!" ;;
+				7) G_APOLLO-NOTIFY -1 "Installing Geany Ultra-Light IDE..."; G_AGI geany geany-plugins; G_WHIP_MSG "Success" "Geany installed! Instant startup (~15MB RAM)." ;;
+				8) G_APOLLO-NOTIFY -1 "Installing VSCodium Editor..."; G_AGI codium 2>/dev/null || curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | gpg --dearmor -o /usr/share/keyrings/vscodium-archive-keyring.gpg 2>/dev/null || true; G_WHIP_MSG "Notice" "VSCodium setup completed." ;;
+				9) G_APOLLO-NOTIFY -1 "Installing Git & GitHub CLI..."; G_AGI git gh tig; G_WHIP_MSG "Success" "Git and GitHub CLI installed!" ;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 5. Cloud, Containers & Infrastructure
+	manage_cloud_containers()
+	{
+		while true; do
+			clear
+			local c_choice
+			c_choice=$($TUI_TOOL --title "Cloud, Containers & Infrastructure" \
+				--menu "Pilih layanan cloud atau kontainer yang ingin dipasang:" 17 76 6 \
+				"1" "Docker & Compose     : Containerization platform & Compose CLI" \
+				"2" "Portainer CE         : Web UI container management (port 9443)" \
+				"3" "Cockpit Web Console  : Web-based Linux server admin (port 9090)" \
+				"4" "Samba File Server    : Windows network share (/mnt/apollo_share)" \
+				"5" "VM Guest Agent Tools : QEMU, Hyper-V, VirtualBox, VMware drivers" \
+				"0" "Kembali              : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $c_choice in
+				1)
+					G_APOLLO-NOTIFY -1 "Installing Docker & Docker Compose..."
+					curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh && rm -f /tmp/get-docker.sh
+					systemctl enable --now docker
+					G_WHIP_MSG "Docker Ready" "Docker Engine & Compose installed!"
+					;;
+				2)
+					if ! command -v docker >/dev/null 2>&1; then
+						curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh && rm -f /tmp/get-docker.sh && systemctl enable --now docker
+					fi
+					docker volume create portainer_data 2>/dev/null || true
+					docker run -d -p 9000:9000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest 2>/dev/null || true
+					G_WHIP_MSG "Portainer Ready" "Portainer active on https://$(hostname -I | awk '{print $1}'):9443"
+					;;
+				3)
+					G_AGI cockpit
+					systemctl enable --now cockpit.socket
+					G_WHIP_MSG "Cockpit Ready" "Cockpit active at https://$(hostname -I | awk '{print $1}'):9090"
+					;;
+				4)
+					G_AGI samba samba-common-bin
+					mkdir -p /mnt/apollo_share && chmod 777 /mnt/apollo_share
+					systemctl restart smbd
+					G_WHIP_MSG "Samba Ready" "Samba share active at \\\\$(hostname -I | awk '{print $1}')\\ApolloShare"
+					;;
+				5)
+					G_AGI qemu-guest-agent open-vm-tools virtualbox-guest-utils hyperv-daemons 2>/dev/null || true
+					G_WHIP_MSG "VM Tools" "Virtual machine guest agent tools installed."
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 6. Desktop Environments
+	manage_desktop_environments()
+	{
+		while true; do
+			clear
+			local d_choice
+			d_choice=$($TUI_TOOL --title "Desktop Environments" \
+				--menu "Pilih antarmuka Desktop GUI yang ingin dipasang:" 15 76 3 \
+				"1" "Openbox + Tint2 Ultra-Light : Only ~35MB RAM! Perfect for Pentium 4" \
+				"2" "XFCE4 Modern Dark Edition   : Modern Arc-Dark GTK, Papirus icons, wallpaper" \
+				"0" "Kembali                     : Kembali ke Katalog Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $d_choice in
+				1)
+					G_APOLLO-NOTIFY -1 "Installing Ultra-Light GUI (Openbox + Tint2)..."
+					G_AGI openbox obconf tint2 feh lightdm xorg xterm
+					systemctl set-default graphical.target
+					mkdir -p /etc/skel/.config/openbox
+					cat << 'EOF' > /etc/skel/.config/openbox/autostart
+tint2 &
+[[ -f /usr/share/apolloos/wallpaper.png ]] && feh --bg-scale /usr/share/apolloos/wallpaper.png &
+EOF
+					chmod +x /etc/skel/.config/openbox/autostart
+					G_WHIP_MSG "Ultra-Light GUI" "Openbox installed! Idle RAM usage is ~35MB."
+					;;
+				2)
+					G_APOLLO-NOTIFY -1 "Installing XFCE4 Modern Dark Edition..."
+					G_AGI xfce4 xfce4-goodies lightdm lightdm-gtk-greeter xorg arc-theme papirus-icon-theme
+					systemctl set-default graphical.target
+					G_WHIP_MSG "XFCE4 Dark Ready" "XFCE4 Modern Dark Edition installed with Arc-Dark & Papirus icons."
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# Main Catalog Loop
+	while true; do
+		clear
+		CHOICE=$($TUI_TOOL --title "MitraOS - Curated Software Catalog" \
+			--menu "Citra Media Technology & Mitra Utama Group\nPilih kategori perangkat lunak yang ingin dipasang:" 22 76 11 \
+			"1" "Google Antigravity AI       : Agentic Pair Programmer (agy), MCP & Gemma" \
+			"2" "Office & Productivity       : Microsoft Office 365, LibreOffice, AbiWord" \
+			"3" "Graphics, Vector & Photo    : Photoshop CS2, Inkscape, GIMP, Krita" \
+			"4" "Audio, Video & Codecs       : VLC, MPV, Audacious (~7MB), Audacity, FFmpeg" \
+			"5" "Programming & Dev Suite     : VSCodium, Geany, GCC/C++, Python, Node, Go" \
+			"6" "Web Server & Databases      : LEMP, LAMP, Lighttpd, MariaDB (mitra-webserver)" \
+			"7" "Multi-OS App Center         : Windows (.exe), Android (.apk), macOS (Darling)" \
+			"8" "Email Server Suite          : iRedMail, Postfix, Dovecot (mitra-mail)" \
+			"9" "Cloud, Docker & VM          : Docker, Portainer, Cockpit, Samba, VM Tools" \
+			"10" "Desktop Environments       : Openbox Ultra-Light (~35MB) & XFCE4 Dark" \
+			"0" "Kembali                     : Kembali ke Menu Utama" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1) [[ -x /boot/apollo/mitra-antigravity ]] && /boot/apollo/mitra-antigravity || G_WHIP_MSG "Notice" "mitra-antigravity not found." ;;
+			2) manage_office_suite ;;
+			3) manage_graphics_suite ;;
+			4) manage_multimedia_suite ;;
+			5) manage_programming_suite ;;
+			6) [[ -x /boot/apollo/mitra-webserver ]] && /boot/apollo/mitra-webserver || G_WHIP_MSG "Notice" "mitra-webserver not found." ;;
+			7) [[ -x /boot/apollo/mitra-apps ]] && /boot/apollo/mitra-apps || G_WHIP_MSG "Notice" "mitra-apps not found." ;;
+			8) [[ -x /boot/apollo/mitra-mail ]] && /boot/apollo/mitra-mail || G_WHIP_MSG "Notice" "mitra-mail not found." ;;
+			9) manage_cloud_containers ;;
+			10) manage_desktop_environments ;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

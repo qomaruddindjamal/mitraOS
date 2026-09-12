@@ -1,0 +1,389 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Email Server Suite (MTA, IMAP & Webmail)
+	#//////////////////////////////////////////////////////////////////
+	# Ultra-lightweight Mail Server suite designed for low-spec PCs
+	# (Pentium 4 / 512MB RAM) and modern servers alike.
+	# Stack: Postfix (SMTP MTA) + Dovecot (IMAP/POP3) + SnappyMail (Webmail)
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Email Server'
+	G_CHECK_ROOT_USER "$@"
+
+	# Check services status
+	is_postfix_installed() { command -v postfix >/dev/null 2>&1; }
+	is_dovecot_installed() { command -v dovecot >/dev/null 2>&1; }
+
+	# 1. iRedMail Enterprise & Community Mail Server Installer
+	install_iredmail()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying iRedMail Mail Server Solution..."
+		echo -e "${C_CYAN}iRedMail provides Postfix, Dovecot, Nginx, Roundcube & iRedAdmin Web Panel.${C_RESET}"
+
+		local srv_ram=$G_HW_RAM_MB
+		local low_ram_mode=0
+		if (( srv_ram <= 1500 )); then
+			low_ram_mode=1
+			echo -e "${C_YELLOW}[OPTIMIZATION] Low RAM detected (${srv_ram}MB). ClamAV anti-virus will be disabled to save ~1GB RAM!${C_RESET}"
+		fi
+
+		# Prerequisites
+		G_AGI curl wget tar bzip2 gzip bzip2 python3 python3-pip
+
+		local build_dir="/tmp/iredmail_setup"
+		mkdir -p "$build_dir"
+		cd "$build_dir"
+
+		local iredmail_ver="1.7.1"
+		echo -e "${C_CYAN}Downloading iRedMail v${iredmail_ver}...${C_RESET}"
+		if ! curl -fsSL "https://github.com/iredmail/iRedMail/archive/refs/tags/${iredmail_ver}.tar.gz" -o iRedMail.tar.gz; then
+			curl -fsSL "https://www.iredmail.org/download.html" -o iRedMail.tar.gz 2>/dev/null || true
+		fi
+
+		if [[ -f iRedMail.tar.gz ]]; then
+			tar -xzf iRedMail.tar.gz
+			cd "iRedMail-${iredmail_ver}" || cd iRedMail* || true
+
+			# If low RAM system (Pentium 4 / <= 1.5GB RAM), optimize config template
+			if (( low_ram_mode == 1 )); then
+				echo -e "${C_CYAN}Applying Apollo Low-Spec tuning (Disabling heavy ClamAV scanner)...${C_RESET}"
+				if [[ -f config ]]; then
+					sed -i 's/USE_CLAMAV="YES"/USE_CLAMAV="NO"/g' config 2>/dev/null || true
+				fi
+			fi
+
+			G_WHIP_MSG "iRedMail Ready" "iRedMail installer is unpacked.\n\nRunning iRedMail interactive setup now...\nPlease specify your mail domain and admin password."
+			clear
+			bash iRedMail.sh
+
+			# Post-install tuning for Low-Spec / Pentium 4
+			if (( low_ram_mode == 1 )); then
+				systemctl stop clamav-daemon clamav-freshclam 2>/dev/null || true
+				systemctl disable clamav-daemon clamav-freshclam 2>/dev/null || true
+				systemctl restart postfix dovecot nginx 2>/dev/null || true
+				G_APOLLO-NOTIFY 1 "Low RAM mode applied: ClamAV disabled to save ~1GB RAM."
+			fi
+
+			local srv_ip
+			srv_ip=$(hostname -I | awk '{print $1}')
+			G_WHIP_MSG "iRedMail Installed" "iRedMail is deployed successfully!\n\nWebmail: https://$srv_ip/mail/\niRedAdmin Panel: https://$srv_ip/iredadmin/\n\nCredentials are saved in iRedMail.tips"
+		else
+			G_WHIP_MSG "Error" "Could not download iRedMail archive. Please check internet connectivity."
+		fi
+		cd "$FP_APOLLO_DIR" || cd /
+	}
+
+	# 2. Ultra-Lightweight Standalone Mail Stack (Postfix + Dovecot)
+	install_mail_stack()
+	{
+		G_APOLLO-NOTIFY -1 "Deploying Ultra-Lightweight Email Server Stack..."
+		echo -e "${C_CYAN}Installing Postfix (MTA) and Dovecot (IMAP)...${C_RESET}"
+
+		# Debconf pre-seeding for quiet non-interactive install
+		debconf-set-selections <<< "postfix postfix/mailname string $(hostname -f 2>/dev/null || hostname)"
+		debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
+
+		# Minimal package footprint
+		G_AGI postfix dovecot-imapd dovecot-pop3d mailutils
+
+		# Minimalist memory tuning for Postfix (Pentium 4 / low RAM friendly)
+		postconf -e "default_process_limit = 20"
+		postconf -e "home_mailbox = Maildir/"
+		postconf -e "smtpd_banner = \$myhostname ESMTP ApolloOS"
+		postconf -e "inet_interfaces = all"
+		postconf -e "inet_protocols = ipv4"
+
+		# Configure Dovecot for Maildir
+		if [[ -f /etc/dovecot/conf.d/10-mail.conf ]]; then
+			sed -i 's|^[[:space:]]*mail_location[[:space:]]*=.*|mail_location = maildir:~/Maildir|' /etc/dovecot/conf.d/10-mail.conf
+		fi
+
+		# Disable plaintext auth restriction for local networks (with warning)
+		if [[ -f /etc/dovecot/conf.d/10-auth.conf ]]; then
+			sed -i 's|^[[:space:]]*#disable_plaintext_auth[[:space:]]*=.*|disable_plaintext_auth = no|' /etc/dovecot/conf.d/10-auth.conf
+		fi
+
+		# Restart services
+		systemctl restart postfix dovecot 2>/dev/null || true
+		systemctl enable postfix dovecot 2>/dev/null || true
+
+		G_APOLLO-NOTIFY 1 "Email server base stack installed & running!"
+		G_WHIP_MSG "Success" "Email Server stack (Postfix + Dovecot) has been deployed.\nMemory footprint: ~18 MB RAM.\n\nNow configure your Mail Domain and User Accounts."
+	}
+
+	# 2. Configure Mail Domain
+	configure_mail_domain()
+	{
+		local current_domain
+		current_domain=$(postconf -h mydomain 2>/dev/null || hostname -d)
+		[[ -z $current_domain ]] && current_domain="example.com"
+
+		local new_domain
+		new_domain=$($TUI_TOOL --title "Mail Domain Setup" --inputbox \
+			"Enter your primary email domain (e.g., mydomain.com):" 12 60 "$current_domain" 3>&1 1>&2 2>&3)
+		(( $? != 0 )) && return
+
+		if [[ -n $new_domain ]]; then
+			postconf -e "mydomain = $new_domain"
+			postconf -e "myhostname = mail.$new_domain"
+			postconf -e "mydestination = \$myhostname, localhost.\$mydomain, localhost, \$mydomain"
+			systemctl reload postfix 2>/dev/null || true
+			G_WHIP_MSG "Domain Configured" "Domain set to: $new_domain\nHost FQDN: mail.$new_domain\n\nEnsure your DNS MX record points to mail.$new_domain"
+		fi
+	}
+
+	# 3. Mailbox Management (Create user with Maildir)
+	manage_mailboxes()
+	{
+		while true; do
+			local mb_choice
+			mb_choice=$($TUI_TOOL --title "Mailbox Manager" --menu "Manage Email Accounts:" 15 65 4 \
+				"1" "Create New Email Account" \
+				"2" "List Existing System Mail Accounts" \
+				"3" "Change Account Password" \
+				"0" "Back" 3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $mb_choice in
+				1)
+					local u_name
+					u_name=$($TUI_TOOL --title "New Account" --inputbox "Enter username (e.g. admin, contact, info):" 10 50 3>&1 1>&2 2>&3)
+					if [[ -n $u_name ]]; then
+						if id "$u_name" >/dev/null 2>&1; then
+							G_WHIP_MSG "Notice" "User $u_name already exists."
+						else
+							local u_pass
+							u_pass=$($TUI_TOOL --title "New Account Password" --passwordbox "Enter password for $u_name:" 10 50 3>&1 1>&2 2>&3)
+							if [[ -n $u_pass ]]; then
+								useradd -m -s /sbin/nologin "$u_name"
+								echo "${u_name}:${u_pass}" | chpasswd
+								# Initialize Maildir
+								mkdir -p "/home/$u_name/Maildir/new" "/home/$u_name/Maildir/cur" "/home/$u_name/Maildir/tmp"
+								chown -R "$u_name:$u_name" "/home/$u_name/Maildir"
+								chmod -R 700 "/home/$u_name/Maildir"
+								local dom
+								dom=$(postconf -h mydomain 2>/dev/null || echo "localhost")
+								G_WHIP_MSG "Created" "Mailbox created successfully!\nEmail Address: ${u_name}@${dom}\nIMAP/SMTP User: ${u_name}"
+							fi
+						fi
+					fi
+					;;
+				2)
+					local users
+					users=$(awk -F: '$3 >= 1000 && $7 ~ /nologin|bash|sh/ {print $1 " (" $6 ")"}' /etc/passwd)
+					G_WHIP_MSG "Mail Accounts" "Active Mail Accounts:\n\n$users" 18 65
+					;;
+				3)
+					local ch_user
+					ch_user=$($TUI_TOOL --title "Change Password" --inputbox "Enter username:" 10 50 3>&1 1>&2 2>&3)
+					if id "$ch_user" >/dev/null 2>&1; then
+						local new_p
+						new_p=$($TUI_TOOL --title "New Password" --passwordbox "Enter new password:" 10 50 3>&1 1>&2 2>&3)
+						if [[ -n $new_p ]]; then
+							echo "${ch_user}:${new_p}" | chpasswd
+							G_WHIP_MSG "Success" "Password updated for $ch_user."
+						fi
+					else
+						G_WHIP_MSG "Error" "User not found."
+					fi
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# 4. DNS Records Advisor (SPF, DKIM, DMARC, MX)
+	show_dns_advisor()
+	{
+		local domain
+		domain=$(postconf -h mydomain 2>/dev/null)
+		[[ -z $domain ]] && domain="example.com"
+		local public_ip
+		public_ip=$(curl -s -4 ifconfig.me 2>/dev/null || ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+		[[ -z $public_ip ]] && public_ip="YOUR_SERVER_IP"
+
+		local guide="Set up these DNS records at your Domain Registrar (Cloudflare, Namecheap, etc.):\n\n"
+		guide+="1. A Record (Mail Host):\n"
+		guide+="   Type: A | Host: mail | Value: $public_ip\n\n"
+		guide+="2. MX Record (Mail Exchanger):\n"
+		guide+="   Type: MX | Host: @ | Value: mail.$domain | Priority: 10\n\n"
+		guide+="3. SPF Record (Sender Anti-Spoofing):\n"
+		guide+="   Type: TXT | Host: @ | Value: \"v=spf1 mx ip4:$public_ip ~all\"\n\n"
+		guide+="4. DMARC Record (Delivery Enforcement):\n"
+		guide+="   Type: TXT | Host: _dmarc | Value: \"v=DMARC1; p=quarantine; rua=mailto:admin@$domain\"\n\n"
+		guide+="5. Reverse DNS (rDNS / PTR):\n"
+		guide+="   Set PTR of $public_ip to: mail.$domain"
+
+		G_WHIP_MSG "DNS Setup Guide for $domain" "$guide" 24 76
+	}
+
+	# 5. Lightweight Webmail Installer (SnappyMail / Roundcube)
+	install_webmail()
+	{
+		G_APOLLO-NOTIFY -1 "Installing Lightweight Webmail (SnappyMail)..."
+		# SnappyMail uses PHP-FPM + Nginx, consuming only ~15MB RAM!
+		G_AGI nginx php-fpm php-curl php-mbstring php-xml php-sqlite3 unzip
+
+		local web_root="/var/www/webmail"
+		mkdir -p "$web_root"
+
+		echo -e "${C_CYAN}Downloading latest SnappyMail release...${C_RESET}"
+		curl -fsSL https://github.com/the-djmaze/snappymail/releases/latest/download/snappymail-latest.tar.gz -o /tmp/snappymail.tar.gz
+		tar -xzf /tmp/snappymail.tar.gz -C "$web_root" 2>/dev/null || true
+		rm -f /tmp/snappymail.tar.gz
+		chown -R www-data:www-data "$web_root"
+		chmod -R 755 "$web_root"
+
+		# Detect PHP-FPM socket version
+		local php_sock
+		php_sock=$(find /run/php/ -name "*.sock" 2>/dev/null | head -n 1)
+		[[ -z $php_sock ]] && php_sock="/run/php/php-fpm.sock"
+
+		# Setup Nginx VHost for Webmail on Port 8080
+		cat << EOF > /etc/nginx/sites-available/mitra-webmail
+server {
+    listen 8080 default_server;
+    listen [::]:8080 default_server;
+    server_name _;
+    root $web_root;
+    index index.php index.html;
+
+    client_max_body_size 50M;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ^~ /data {
+        deny all;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:$php_sock;
+    }
+}
+EOF
+		ln -sf /etc/nginx/sites-available/mitra-webmail /etc/nginx/sites-enabled/mitra-webmail
+		systemctl restart nginx php*-fpm 2>/dev/null || true
+
+		local srv_ip
+		srv_ip=$(hostname -I | awk '{print $1}')
+		G_WHIP_MSG "Webmail Installed" "Lightweight Webmail (SnappyMail) is active!\n\nAccess via browser: http://$srv_ip:8080\nAdmin panel: http://$srv_ip:8080/?admin"
+	}
+
+	# 6. Test Email Ports
+	test_mail_ports()
+	{
+		local status="Email Services Port Diagnostic:\n\n"
+		for port in 25 587 465 143 993 8080; do
+			local srv_label
+			case $port in
+				25) srv_label="SMTP (Port 25)" ;;
+				587) srv_label="SMTP Submission (Port 587)" ;;
+				465) srv_label="SMTPS SSL (Port 465)" ;;
+				143) srv_label="IMAP (Port 143)" ;;
+				993) srv_label="IMAPS SSL (Port 993)" ;;
+				8080) srv_label="Webmail (Port 8080)" ;;
+			esac
+
+			if ss -tlpn 2>/dev/null | grep -q ":$port "; then
+				status+="  [ONLINE]  $srv_label is LISTENING\n"
+			else
+				status+="  [CLOSED]  $srv_label is NOT active\n"
+			fi
+		done
+
+		G_WHIP_MSG "Port Diagnostics" "$status" 18 65
+	}
+
+	# Main TUI Loop
+	while true; do
+		clear
+		postfix_badge="[Not Installed]"
+		dovecot_badge="[Not Installed]"
+		iredmail_badge="[Not Installed]"
+		is_postfix_installed && postfix_badge="[Active: Postfix]"
+		is_dovecot_installed && dovecot_badge="[Active: Dovecot]"
+		[[ -d /var/vmail || -f /root/iRedMail.tips ]] && iredmail_badge="[Active: iRedMail]"
+
+		CHOICE=$($TUI_TOOL --title "MitraOS - Email Server Suite" \
+			--menu "Mail Status: $postfix_badge $dovecot_badge $iredmail_badge\nSelect operation:" 19 76 9 \
+			"1" "Deploy iRedMail Full Suite : Postfix, Dovecot, Nginx, Roundcube & iRedAdmin" \
+			"2" "Deploy Ultra-Light Stack   : Minimal Postfix + Dovecot (Best for Pentium 4)" \
+			"3" "Configure Mail Domain      : Set primary domain and hostname" \
+			"4" "Manage Mailboxes / Users   : Create email accounts & passwords" \
+			"5" "DNS Configuration Advisor  : View required MX, SPF, DMARC records" \
+			"6" "Deploy Lightweight Webmail : Install SnappyMail Web Client (port 8080)" \
+			"7" "Test Server Ports          : Check SMTP, IMAP & Webmail status" \
+			"8" "View Live Mail Log         : Tail /var/log/mail.log" \
+			"0" "Kembali                    : Kembali ke Menu Utama" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1) install_iredmail ;;
+			2) install_mail_stack ;;
+			3)
+				if ! is_postfix_installed; then
+					G_WHIP_MSG "Notice" "Please install iRedMail (Option 1) or Minimal Stack (Option 2) first."
+				else
+					configure_mail_domain
+				fi
+				;;
+			4)
+				if ! is_postfix_installed; then
+					G_WHIP_MSG "Notice" "Please install iRedMail (Option 1) or Minimal Stack (Option 2) first."
+				else
+					manage_mailboxes
+				fi
+				;;
+			5) show_dns_advisor ;;
+			6) install_webmail ;;
+			7) test_mail_ports ;;
+			8)
+				clear
+				echo -e "${C_CYAN}Displaying recent mail logs (Press Ctrl+C or q to exit)...${C_RESET}\n"
+				tail -n 40 /var/log/mail.log 2>/dev/null || journalctl -u postfix -u dovecot -n 40 --no-pager
+				read -r -p "Press Enter to return..."
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

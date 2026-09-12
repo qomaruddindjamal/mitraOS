@@ -1,0 +1,19 @@
+{
+  "os_name": "MitraOS",
+  "version": "1.0.0",
+  "codename": "Apollo",
+  "volume_id": "MITRAOS_V1",
+  "publisher": "Citra Media Technology & Mitra Utama Group",
+  "preparer": "Qomaruddin Djamal",
+  "architectures": ["x86_64", "arm64", "i686"],
+  "boot": {
+    "grub_cfg": "boot/grub/grub.cfg",
+    "isolinux_cfg": "boot/isolinux/isolinux.cfg",
+    "kernel": "boot/kernel/vmlinuz",
+    "initrd": "boot/kernel/initrd.img",
+    "efi_boot": "boot/efi/BOOTX64.EFI",
+    "efi_img": "boot/grub/efi.img"
+  },
+  "hybrid_boot": true,
+  "compression": "high"
+}

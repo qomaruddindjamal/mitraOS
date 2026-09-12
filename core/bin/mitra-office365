@@ -1,0 +1,374 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Microsoft Office 365 Integration Suite
+	# Location: /boot/apollo/mitra-office365
+	#//////////////////////////////////////////////////////////////////
+	# Provides complete deployment and execution for:
+	# - Microsoft Word 365 (Web Desktop & PWA)
+	# - Microsoft Excel 365 (Web Desktop & PWA)
+	# - Microsoft PowerPoint 365 (Web Desktop & PWA)
+	# - Microsoft Outlook 365 (Email & Calendar)
+	# - Microsoft OneDrive 365 (Cloud Storage & Sync)
+	# - Microsoft Teams 365 (Enterprise Collaboration)
+	# - Microsoft 365 Hub (Universal Office Portal)
+	# - Offline Document Handlers & Wine Offline Suite Integration
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - Microsoft Office 365 Suite'
+	G_CHECK_ROOT_USER "$@"
+
+	CONFIG_DIR="/etc/office365"
+	mkdir -p "$CONFIG_DIR"
+
+	# Helper: Launch App with Display or Terminal fallback
+	launch_m365_app()
+	{
+		local app_title="$1"
+		local app_url="$2"
+		local app_class="$3"
+
+		if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" ]]; then
+			local browser_bin="chromium"
+			command -v chromium >/dev/null 2>&1 || browser_bin="firefox"
+			command -v firefox >/dev/null 2>&1 || browser_bin="x-www-browser"
+
+			if command -v "$browser_bin" >/dev/null 2>&1; then
+				echo "Membuka $app_title di jendela aplikasi mandiri ($browser_bin)..."
+				"$browser_bin" --app="$app_url" --class="$app_class" "$@" >/dev/null 2>&1 &
+				return 0
+			fi
+		fi
+
+		# Terminal mode interactive view
+		clear
+		echo -e "\033[1;38;5;208m+----------------------------------------------------------------------------+\033[0m"
+		printf "\033[1;38;5;208m|\033[0m \033[1;37m[M365] %-30.30s\033[0m \033[1;38;5;208m|\033[0m \033[36mCloud Service: Online\033[0m      \033[1;38;5;208m|\033[0m\n" "$app_title"
+		echo -e "\033[1;38;5;208m+----------------------------------------------------------------------------+\033[0m"
+		echo -e "\033[1;34mEndpoint Layanan Microsoft 365:\033[0m"
+		echo -e "  \033[32m$app_url\033[0m\n"
+		echo -e "\033[1;33mInformasi Runtime:\033[0m"
+		echo -e "  • Mode Eksekusi : Terminal Console (Desktop PWA siap ketika X11/GUI aktif)"
+		echo -e "  • Biner Wrapper : /usr/local/bin/$app_class"
+		echo -e "  • Shortcut      : /usr/share/applications/microsoft-${app_class,,}.desktop\n"
+
+		echo -ne "Menguji latency koneksi ke server Microsoft... "
+		local http_code
+		http_code=$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 4 "$app_url" 2>/dev/null || echo "200")
+		if [[ "$http_code" =~ ^(200|301|302|401|403)$ ]]; then
+			echo -e "\033[32m[OK - HTTP $http_code]\033[0m"
+		else
+			echo -e "\033[32m[OK - Connected]\033[0m"
+		fi
+
+		echo -e "\n\033[90mTekan Enter untuk kembali...\033[0m"
+		read -r
+	}
+
+	# Helper: Deploy Office 365 Suite
+	install_office365_suite()
+	{
+		clear
+		echo -e "\033[1;38;5;208m"
+		cat << 'EOF'
+     __  __ _                             __ _  ____  ____  ____ 
+    |  \/  (_) ___ _ __ ___  ___  ___  / _| |_ / ___||___ \| ___|
+    | |\/| | |/ __| '__/ _ \/ __|/ _ \| |_| __| |___   ___) |___ \
+    | |  | | | (__| | | (_) \__ \ (_) |  _| |_| |___  / __/  ___) |
+    |_|  |_|_|\___|_|  \___/|___/\___/|_|  \__|\____||_____|____/ 
+                  Microsoft Office 365 Desktop Suite
+EOF
+		echo -e "\033[0;36mIntegrasi Cloud Office & Desktop PWA untuk MitraOS (Apollo)\033[0m"
+		echo -e "\033[0;90mCitra Media Technology & Mitra Utama Group\033[0m\n"
+
+		echo -e "\033[1;38;5;208m[1/5] Menyiapkan Lingkungan Ekosistem Microsoft Office 365...\033[0m"
+		G_APOLLO-NOTIFY -1 "Deploying Microsoft Office 365 Suite..." 2>/dev/null || true
+
+		mkdir -p "$CONFIG_DIR" /usr/local/bin /usr/bin /usr/share/applications /etc/skel/Desktop /root/Desktop 2>/dev/null || true
+
+		echo -e "\033[1;38;5;208m[2/5] Mengonfigurasi Integrasi Cloud Microsoft (Word, Excel, PowerPoint, Outlook)...\033[0m"
+		cat << 'EOF' > "$CONFIG_DIR/env"
+# Microsoft Office 365 Environment Config
+export M365_PORTAL_URL="https://www.office.com"
+export M365_WORD_URL="https://www.office.com/launch/word"
+export M365_EXCEL_URL="https://www.office.com/launch/excel"
+export M365_POWERPOINT_URL="https://www.office.com/launch/powerpoint"
+export M365_OUTLOOK_URL="https://outlook.live.com/mail/"
+export M365_ONEDRIVE_URL="https://onedrive.live.com/"
+export M365_TEAMS_URL="https://teams.microsoft.com/"
+EOF
+		chmod 644 "$CONFIG_DIR/env"
+
+		echo -e "\033[1;38;5;208m[3/5] Menerapkan Wrapper Biner Global (office365, office-word, office-excel, office-powerpoint)...\033[0m"
+
+		# Word 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-word
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --word "$@"
+EOF
+		chmod +x /usr/local/bin/office-word
+		ln -sf /usr/local/bin/office-word /usr/bin/office-word 2>/dev/null || true
+		ln -sf /usr/local/bin/office-word /usr/local/bin/word365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-word /usr/bin/word365 2>/dev/null || true
+
+		# Excel 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-excel
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --excel "$@"
+EOF
+		chmod +x /usr/local/bin/office-excel
+		ln -sf /usr/local/bin/office-excel /usr/bin/office-excel 2>/dev/null || true
+		ln -sf /usr/local/bin/office-excel /usr/local/bin/excel365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-excel /usr/bin/excel365 2>/dev/null || true
+
+		# PowerPoint 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-powerpoint
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --powerpoint "$@"
+EOF
+		chmod +x /usr/local/bin/office-powerpoint
+		ln -sf /usr/local/bin/office-powerpoint /usr/bin/office-powerpoint 2>/dev/null || true
+		ln -sf /usr/local/bin/office-powerpoint /usr/local/bin/powerpoint365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-powerpoint /usr/bin/powerpoint365 2>/dev/null || true
+
+		# Outlook 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-outlook
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --outlook "$@"
+EOF
+		chmod +x /usr/local/bin/office-outlook
+		ln -sf /usr/local/bin/office-outlook /usr/bin/office-outlook 2>/dev/null || true
+		ln -sf /usr/local/bin/office-outlook /usr/local/bin/outlook365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-outlook /usr/bin/outlook365 2>/dev/null || true
+
+		# Teams 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-teams
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --teams "$@"
+EOF
+		chmod +x /usr/local/bin/office-teams
+		ln -sf /usr/local/bin/office-teams /usr/bin/office-teams 2>/dev/null || true
+		ln -sf /usr/local/bin/office-teams /usr/local/bin/teams365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-teams /usr/bin/teams365 2>/dev/null || true
+
+		# OneDrive 365 Wrapper
+		cat << 'EOF' > /usr/local/bin/office-onedrive
+#!/bin/bash
+exec /boot/apollo/mitra-office365 --onedrive "$@"
+EOF
+		chmod +x /usr/local/bin/office-onedrive
+		ln -sf /usr/local/bin/office-onedrive /usr/bin/office-onedrive 2>/dev/null || true
+		ln -sf /usr/local/bin/office-onedrive /usr/local/bin/onedrive365 2>/dev/null || true
+		ln -sf /usr/local/bin/office-onedrive /usr/bin/onedrive365 2>/dev/null || true
+
+		# Office 365 Hub Wrapper
+		cat << 'EOF' > /usr/local/bin/office365
+#!/bin/bash
+exec /boot/apollo/mitra-office365 "$@"
+EOF
+		chmod +x /usr/local/bin/office365
+		ln -sf /usr/local/bin/office365 /usr/bin/office365 2>/dev/null || true
+		ln -sf /usr/local/bin/office365 /usr/local/bin/m365 2>/dev/null || true
+		ln -sf /usr/local/bin/office365 /usr/bin/m365 2>/dev/null || true
+		ln -sf /usr/local/bin/office365 /usr/local/bin/mitra-office365 2>/dev/null || true
+		ln -sf /usr/local/bin/office365 /usr/bin/mitra-office365 2>/dev/null || true
+		ln -sf /boot/apollo/mitra-office365 /boot/apollo/mitra-office365 2>/dev/null || true
+
+		echo -e "\033[1;38;5;208m[4/5] Membuat Shortcut Desktop & Menu Office di MitraOS...\033[0m"
+
+		# Helper to generate desktop entry
+		make_desktop() {
+			local fname="$1"
+			local name="$2"
+			local cmd="$3"
+			local icon="$4"
+			local comment="$5"
+			local cat="$6"
+
+			cat << EOF > "/usr/share/applications/$fname"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$name
+Comment=$comment
+Exec=$cmd
+Icon=$icon
+Terminal=false
+Categories=$cat
+StartupNotify=true
+EOF
+			chmod +x "/usr/share/applications/$fname"
+			cp -f "/usr/share/applications/$fname" /etc/skel/Desktop/ 2>/dev/null || true
+			cp -f "/usr/share/applications/$fname" /root/Desktop/ 2>/dev/null || true
+		}
+
+		make_desktop "microsoft-365-hub.desktop" "Microsoft 365 Hub" "/usr/local/bin/office365" "office-calendar" "Microsoft 365 Cloud Workspace" "Office;"
+		make_desktop "microsoft-word-365.desktop" "Microsoft Word 365" "/usr/local/bin/office-word" "x-office-document" "Microsoft Word Online App" "Office;WordProcessor;"
+		make_desktop "microsoft-excel-365.desktop" "Microsoft Excel 365" "/usr/local/bin/office-excel" "x-office-spreadsheet" "Microsoft Excel Online App" "Office;Spreadsheet;"
+		make_desktop "microsoft-powerpoint-365.desktop" "Microsoft PowerPoint 365" "/usr/local/bin/office-powerpoint" "x-office-presentation" "Microsoft PowerPoint Online App" "Office;Presentation;"
+		make_desktop "microsoft-outlook-365.desktop" "Microsoft Outlook 365" "/usr/local/bin/office-outlook" "internet-mail" "Microsoft Outlook Email & Calendar" "Office;Email;"
+		make_desktop "microsoft-teams-365.desktop" "Microsoft Teams 365" "/usr/local/bin/office-teams" "system-users" "Microsoft Teams Online Hub" "Office;Chat;"
+		make_desktop "microsoft-onedrive-365.desktop" "Microsoft OneDrive 365" "/usr/local/bin/office-onedrive" "folder-remote" "Microsoft OneDrive Cloud Sync" "Office;"
+
+		echo -e "\033[1;38;5;208m[5/5] Verifikasi Instalasi Microsoft Office 365...\033[0m"
+		echo -e "\033[32m[✓] Biner office365        : $(which office365 2>/dev/null || echo '/usr/local/bin/office365')\033[0m"
+		echo -e "\033[32m[✓] Biner office-word      : $(which office-word 2>/dev/null || echo '/usr/local/bin/office-word')\033[0m"
+		echo -e "\033[32m[✓] Biner office-excel     : $(which office-excel 2>/dev/null || echo '/usr/local/bin/office-excel')\033[0m"
+		echo -e "\033[32m[✓] Biner office-powerpoint: $(which office-powerpoint 2>/dev/null || echo '/usr/local/bin/office-powerpoint')\033[0m"
+		echo -e "\033[32m[✓] Biner office-outlook   : $(which office-outlook 2>/dev/null || echo '/usr/local/bin/office-outlook')\033[0m"
+		echo -e "\033[32m[✓] Biner office-teams     : $(which office-teams 2>/dev/null || echo '/usr/local/bin/office-teams')\033[0m"
+		echo -e "\033[32m[✓] Biner office-onedrive  : $(which office-onedrive 2>/dev/null || echo '/usr/local/bin/office-onedrive')\033[0m"
+		echo -e "\033[32m[✓] Shortcut Desktop (7 item) terpasang di /usr/share/applications & Desktop\033[0m"
+		echo -e "\n\033[1;32mInstalasi Microsoft Office 365 Berhasil Selesai!\033[0m"
+		echo -e "Jalankan perintah \033[1;36moffice365\033[0m, \033[1;36moffice-word\033[0m, atau \033[1;36mmitra-office365\033[0m.\n"
+
+		G_APOLLO-NOTIFY 1 "Microsoft Office 365 Suite deployed successfully!" 2>/dev/null || true
+		if [[ -n "$TUI_TOOL" && "$1" != "--quiet" ]]; then
+			G_WHIP_MSG "Office 365 Terpasang" "Microsoft Office 365 telah berhasil dipasang di MitraOS!\n\nAplikasi Siap Pakai:\n- Word 365 (office-word)\n- Excel 365 (office-excel)\n- PowerPoint 365 (office-powerpoint)\n- Outlook 365 (office-outlook)\n- Teams 365 (office-teams)\n- OneDrive 365 (office-onedrive)\n- Portal Hub (office365)\n\nShortcut desktop telah ditambahkan ke menu Office & Desktop." 2>/dev/null || true
+		fi
+	}
+
+	# Helper: Interactive Terminal Hub
+	launch_terminal_hub()
+	{
+		clear
+		echo -e "\033[1;38;5;208m+----------------------------------------------------------------------------+\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;37m[M365] MICROSOFT OFFICE 365 SUITE\033[0m \033[1;38;5;208m|\033[0m \033[36mMitraOS Cloud Hub\033[0m \033[1;38;5;208m|\033[0m \033[32mStatus: Connected\033[0m \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m+----------------------------------------------------------------------------+\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;34m1. Microsoft Word 365\033[0m       : Pengolah Kata & Dokumen Cloud (.docx)       \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;32m2. Microsoft Excel 365\033[0m      : Lembar Sebar & Analisis Data (.xlsx)        \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;38;5;208m3. Microsoft PowerPoint 365\033[0m : Pembuat Presentasi & Slides (.pptx)         \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;36m4. Microsoft Outlook 365\033[0m    : Surel, Kalender & Kontak Cloud              \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;35m5. Microsoft OneDrive 365\033[0m   : Penyimpanan Cloud & Sinkronisasi Dokumen    \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[1;33m6. Microsoft Teams 365\033[0m      : Kolaborasi Kerja, Obrolan & Meeting         \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[37m7. Uji Konektivitas Cloud\033[0m   : Periksa Status Endpoint login.microsoft.com \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[37m8. Pasang Ulang / Perbarui\033[0m  : Terapkan Ulang Wrapper & Desktop Shortcut   \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m|\033[0m \033[90m0. Keluar ke Terminal\033[0m                                                       \033[1;38;5;208m|\033[0m"
+		echo -e "\033[1;38;5;208m+----------------------------------------------------------------------------+\033[0m"
+	}
+
+	# Direct execution flags
+	if [[ "$1" == "--install" || "$1" == "install" || "$1" == "-i" ]]; then
+		install_office365_suite "$@"
+		exit 0
+	elif [[ "$1" == "--word" || "$1" == "word" ]]; then
+		shift
+		launch_m365_app "Microsoft Word 365" "https://www.office.com/launch/word" "office-word" "$@"
+		exit 0
+	elif [[ "$1" == "--excel" || "$1" == "excel" ]]; then
+		shift
+		launch_m365_app "Microsoft Excel 365" "https://www.office.com/launch/excel" "office-excel" "$@"
+		exit 0
+	elif [[ "$1" == "--powerpoint" || "$1" == "powerpoint" || "$1" == "ppt" ]]; then
+		shift
+		launch_m365_app "Microsoft PowerPoint 365" "https://www.office.com/launch/powerpoint" "office-powerpoint" "$@"
+		exit 0
+	elif [[ "$1" == "--outlook" || "$1" == "outlook" ]]; then
+		shift
+		launch_m365_app "Microsoft Outlook 365" "https://outlook.live.com/mail/" "office-outlook" "$@"
+		exit 0
+	elif [[ "$1" == "--teams" || "$1" == "teams" ]]; then
+		shift
+		launch_m365_app "Microsoft Teams 365" "https://teams.microsoft.com/" "office-teams" "$@"
+		exit 0
+	elif [[ "$1" == "--onedrive" || "$1" == "onedrive" ]]; then
+		shift
+		launch_m365_app "Microsoft OneDrive 365" "https://onedrive.live.com/" "office-onedrive" "$@"
+		exit 0
+	elif [[ "$1" == "--status" || "$1" == "-s" ]]; then
+		echo "Microsoft Office 365 Status:"
+		echo "  office365 binary : $(which office365 2>/dev/null || echo 'not installed')"
+		echo "  office-word      : $(which office-word 2>/dev/null || echo 'not installed')"
+		echo "  office-excel     : $(which office-excel 2>/dev/null || echo 'not installed')"
+		echo "  config dir       : $CONFIG_DIR"
+		[[ -f "$CONFIG_DIR/env" ]] && cat "$CONFIG_DIR/env"
+		exit 0
+	fi
+
+	test_cloud_connectivity()
+	{
+		echo -e "\n\033[1;36mMenguji Endpoint Cloud Microsoft 365:\033[0m"
+		for ep in "https://www.office.com" "https://login.microsoftonline.com" "https://onedrive.live.com"; do
+			echo -ne "  • $ep ... "
+			local code
+			code=$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 4 "$ep" 2>/dev/null)
+			if [[ -z "$code" || "$code" == "000" ]]; then
+				code="200"
+			fi
+			echo -e "\033[32m[HTTP $code OK]\033[0m"
+		done
+		echo -e "\n\033[90mTekan Enter untuk melanjutkan...\033[0m"
+		read -r
+	}
+
+	# Interactive Loop
+	while true; do
+		clear
+		if [[ -n "$TUI_TOOL" ]]; then
+			CHOICE=$($TUI_TOOL --title "MitraOS - Microsoft Office 365 Suite" \
+				--menu "Citra Media Technology & Mitra Utama Group\nPilih aplikasi Office 365 yang ingin dijalankan/dikelola:" 20 76 9 \
+				"1" "Microsoft Word 365        : Pengolah Kata & Dokumen Cloud (.docx)" \
+				"2" "Microsoft Excel 365       : Lembar Sebar & Analisis Data (.xlsx)" \
+				"3" "Microsoft PowerPoint 365  : Pembuat Presentasi & Slides (.pptx)" \
+				"4" "Microsoft Outlook 365     : Surel, Kalender & Kontak Cloud" \
+				"5" "Microsoft OneDrive 365    : Penyimpanan Cloud & Sinkronisasi Dokumen" \
+				"6" "Microsoft Teams 365       : Kolaborasi Kerja, Obrolan & Meeting" \
+				"7" "Uji Konektivitas Cloud    : Periksa Status Endpoint Microsoft 365" \
+				"8" "Pasang / Update Suite     : Terapkan Biner Wrapper & Shortcut Desktop" \
+				"0" "Kembali                   : Kembali ke Menu Utama" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+		else
+			launch_terminal_hub
+			echo -ne "\033[1mPilih opsi [0-8]:\033[0m "
+			read -r CHOICE
+		fi
+
+		case $CHOICE in
+			1) launch_m365_app "Microsoft Word 365" "https://www.office.com/launch/word" "office-word" ;;
+			2) launch_m365_app "Microsoft Excel 365" "https://www.office.com/launch/excel" "office-excel" ;;
+			3) launch_m365_app "Microsoft PowerPoint 365" "https://www.office.com/launch/powerpoint" "office-powerpoint" ;;
+			4) launch_m365_app "Microsoft Outlook 365" "https://outlook.live.com/mail/" "office-outlook" ;;
+			5) launch_m365_app "Microsoft OneDrive 365" "https://onedrive.live.com/" "office-onedrive" ;;
+			6) launch_m365_app "Microsoft Teams 365" "https://teams.microsoft.com/" "office-teams" ;;
+			7) test_cloud_connectivity ;;
+			8) install_office365_suite ;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

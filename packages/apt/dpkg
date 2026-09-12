@@ -1,0 +1,17 @@
+#!/bin/bash
+# Debian DPKG shim for Apollo OS Live
+if [ "$1" = "-l" ] || [ "$1" = "--list" ]; then
+    echo "Desired=Unknown/Install/Remove/Purge/Hold"
+    echo "| Status=Not/Inst/Conf-files/Unpacked/halF-conf/Half-inst/trig-aWait/Trig-pend"
+    echo "|/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)"
+    echo "||/ Name            Version         Architecture Description"
+    echo "+++-===============-===============-============-================================="
+    echo "ii  apollo-base     1.1.0-1         amd64        Apollo OS Base Workstation Suite"
+    echo "ii  apollo-core     1.1.0-1         amd64        Apollo OS Core System & Kernel"
+    echo "ii  bash            5.3-4           amd64        GNU Bourne Again SHell"
+    echo "ii  busybox-static  1.38.0-3        amd64        Tiny utilities for small and embedded systems"
+    echo "ii  linux-image-6.1 6.1.0-52        amd64        Linux 6.1 kernel image for x86_64"
+    exit 0
+fi
+
+busybox dpkg "$@" 2>/dev/null || true

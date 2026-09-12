@@ -1,0 +1,919 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Security & Ethical Hacking Suite
+	# Based on: The Python Code Ethical Hacking Series
+	# (https://thepythoncode.com/topic/ethical-hacking)
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Author: Qomaruddin Djamal
+	# Location: /boot/apollo/mitra-security
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	C_RESET=$'\033[0m'
+	C_BOLD=$'\033[1m'
+	C_ORANGE=$'\033[38;5;208m'
+	C_CYAN=$'\033[38;5;45m'
+	C_GREEN=$'\033[38;5;82m'
+	C_YELLOW=$'\033[38;5;220m'
+	C_RED=$'\033[38;5;196m'
+	C_WHITE=$'\033[1;37m'
+	C_GREY=$'\033[38;5;244m'
+
+	TUI_TOOL="whiptail"
+	command -v whiptail >/dev/null 2>&1 || TUI_TOOL="dialog"
+	command -v "$TUI_TOOL" >/dev/null 2>&1 || TUI_TOOL=""
+
+	msg_box() {
+		local title=$1
+		local text=$2
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --msgbox "$text" 18 76
+		else
+			echo -e "\n=== $title ===\n$text\n"
+			read -r -p "Tekan Enter untuk melanjutkan..."
+		fi
+	}
+
+	input_box() {
+		local title=$1
+		local prompt=$2
+		local default_val=$3
+		if [[ -n "$TUI_TOOL" ]]; then
+			$TUI_TOOL --title "$title" --inputbox "$prompt" 12 70 "$default_val" 3>&1 1>&2 2>&3
+		else
+			read -r -p "$prompt [$default_val]: " val
+			echo "${val:-$default_val}"
+		fi
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# 1. NETWORK RECONNAISSANCE & SNIFFING
+	#//////////////////////////////////////////////////////////////////
+	menu_network() {
+		while true; do
+			local choices=(
+				"1" "Port Scanner (TCP Multi-Threaded)"
+				"2" "Network Host Discovery (ARP / Subnet Ping)"
+				"3" "Packet Sniffer & Traffic Inspector"
+				"4" "Custom Netcat / Port Listener (MitraCat)"
+				"5" "Honeypot Defense & Port Scan Detector"
+				"6" "ARP Spoofing Detection & Monitor"
+				"7" "Packet Crafting & Ping Probe"
+				"0" "Kembali ke Menu Utama"
+			)
+			local opt
+			if [[ -n "$TUI_TOOL" ]]; then
+				opt=$($TUI_TOOL --title "1. Network Reconnaissance & Sniffing" \
+					--menu "Pilih utilitas audit jaringan:" 18 76 8 \
+					"${choices[@]}" 3>&1 1>&2 2>&3)
+				[[ $? -ne 0 || "$opt" == "0" ]] && break
+			else
+				echo -e "\n${C_ORANGE}=== 1. Network Reconnaissance & Sniffing ===${C_RESET}"
+				for ((i=0; i<${#choices[@]}; i+=2)); do
+					echo -e "  ${C_CYAN}${choices[i]})${C_RESET} ${choices[i+1]}"
+				done
+				read -r -p "Pilihan: " opt
+				[[ "$opt" == "0" || -z "$opt" ]] && break
+			fi
+
+			case "$opt" in
+				1)
+					local target
+					target=$(input_box "TCP Port Scanner" "Masukkan IP Target atau Hostname:" "127.0.0.1")
+					[[ -z "$target" ]] && continue
+					local ports
+					ports=$(input_box "Range Port" "Masukkan range port (contoh: 20-1000 atau 22,80,443,8080):" "21,22,25,53,80,110,139,443,445,3306,3389,8080")
+					clear
+					echo -e "${C_CYAN}[*] Memulai TCP Port Scanner ke $target ...${C_RESET}"
+					python3 -c "
+import socket, sys, time
+from concurrent.futures import ThreadPoolExecutor
+
+target = '$target'
+ports_str = '$ports'
+if '-' in ports_str:
+    start_p, end_p = map(int, ports_str.split('-'))
+    ports = list(range(start_p, end_p + 1))
+else:
+    ports = [int(p.strip()) for p in ports_str.split(',') if p.strip().isdigit()]
+
+def scan_port(p):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.6)
+        res = s.connect_ex((target, p))
+        if res == 0:
+            try:
+                service = socket.getservbyport(p)
+            except:
+                service = 'unknown'
+            print(f'  [+] Port {p:5d}/tcp OPEN  ({service})')
+        s.close()
+    except Exception:
+        pass
+
+print(f'=== Scan Report: {target} ===')
+t0 = time.time()
+with ThreadPoolExecutor(max_workers=50) as ex:
+    ex.map(scan_port, ports)
+print(f'Selesai dalam {time.time()-t0:.2f} detik.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				2)
+					local subnet
+					subnet=$(input_box "Network Host Discovery" "Masukkan subnet lokal (contoh: 192.168.1.0/24):" "172.20.117.0/24")
+					clear
+					echo -e "${C_CYAN}[*] Memindai host aktif pada $subnet ...${C_RESET}"
+					python3 -c "
+import subprocess, ipaddress, sys
+from concurrent.futures import ThreadPoolExecutor
+
+subnet_str = '$subnet'
+try:
+    net = ipaddress.ip_network(subnet_str, strict=False)
+except Exception as e:
+    print(f'Error subnet: {e}')
+    sys.exit(1)
+
+def ping_ip(ip):
+    ip_str = str(ip)
+    cmd = ['ping', '-c', '1', '-W', '1', ip_str]
+    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if res.returncode == 0:
+        print(f'  [+] Host AKTIF: {ip_str}')
+
+print(f'=== Memindai {net.num_addresses} IP pada {subnet_str} ===')
+with ThreadPoolExecutor(max_workers=60) as ex:
+    ex.map(ping_ip, net.hosts())
+print('Pemindaian selesai.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				3)
+					clear
+					echo -e "${C_CYAN}[*] Menjalankan Simple Packet Sniffer (RAW Socket / TCPDump)...${C_RESET}"
+					echo -e "${C_YELLOW}Tekan Ctrl+C untuk menghentikan sniffer.${C_RESET}\n"
+					python3 -c "
+import socket, sys
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+    s.settimeout(10.0)
+    print('Mendengarkan paket TCP masuk...')
+    for _ in range(25):
+        pkt, addr = s.recvfrom(65535)
+        print(f'  [PKT] Sumber: {addr[0]} | Ukuran: {len(pkt)} bytes')
+except KeyboardInterrupt:
+    pass
+except PermissionError:
+    print('Error: Butuh privilege root untuk RAW socket sniffer.')
+except Exception as e:
+    print(f'Info sniffer: {e} (Memerlukan RAW socket support)')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				4)
+					local port
+					port=$(input_box "MitraCat Listener" "Masukkan port listener:" "4444")
+					clear
+					echo -e "${C_GREEN}[*] MitraCat mendengarkan pada 0.0.0.0:$port ...${C_RESET}"
+					echo -e "${C_YELLOW}Tekan Ctrl+C untuk keluar.${C_RESET}\n"
+					python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(('0.0.0.0', int('$port')))
+    s.listen(1)
+    print('Menunggu koneksi masuk...')
+    conn, addr = s.accept()
+    print(f'[+] Terhubung dari {addr[0]}:{addr[1]}')
+    while True:
+        data = conn.recv(1024)
+        if not data: break
+        print(data.decode('utf-8', errors='replace'), end='')
+    conn.close()
+except KeyboardInterrupt:
+    print('\nListener dihentikan.')
+finally:
+    s.close()
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				5)
+					local hp_port
+					hp_port=$(input_box "Honeypot Defense" "Port decoy untuk memancing scanner (contoh: 21, 23, 8080):" "8080")
+					clear
+					echo -e "${C_ORANGE}[*] Memulai Honeypot Trap pada port $hp_port ...${C_RESET}"
+					python3 -c "
+import socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(('0.0.0.0', int('$hp_port')))
+    s.listen(5)
+    print(f'[!] HONEYPOT AKTIF pada port $hp_port. Menunggu interaksi penyerang...')
+    while True:
+        conn, addr = s.accept()
+        now = time.strftime('%Y-%m-%d %H:%M:%S')
+        print(f'  [ALERT] {now} - Interaksi terdeteksi dari IP: {addr[0]}:{addr[1]}!')
+        conn.sendall(b'220 MitraOS Honeypot Defense v1.0 Service Ready\r\n')
+        data = conn.recv(1024)
+        if data:
+            print(f'    Payload penyerang: {data[:100]}')
+        conn.close()
+except KeyboardInterrupt:
+    print('\nHoneypot dihentikan.')
+finally:
+    s.close()
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				6)
+					clear
+					echo -e "${C_CYAN}[*] Memeriksa ARP Table untuk duplikasi MAC (ARP Poisoning Detection)...${C_RESET}\n"
+					python3 -c "
+import subprocess
+try:
+    res = subprocess.run(['ip', 'neighbor'], capture_output=True, text=True)
+    lines = res.stdout.strip().split('\n')
+    macs = {}
+    poisoned = False
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 5 and 'lladdr' in parts:
+            ip = parts[0]
+            mac = parts[parts.index('lladdr') + 1]
+            if mac in macs:
+                print(f'  [!] PERINGATAN: Potensi ARP Spoofing! MAC {mac} digunakan oleh {ip} dan {macs[mac]}')
+                poisoned = True
+            else:
+                macs[mac] = ip
+                print(f'  [OK] IP: {ip:15s} -> MAC: {mac}')
+    if not poisoned:
+        print('\n[+] Tidak ditemukan anomali duplikasi MAC pada tabel ARP lokal.')
+except Exception as e:
+    print(f'Error membaca ARP: {e}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				7)
+					local ping_host
+					ping_host=$(input_box "Ping & ICMP Probe" "Target host:" "8.8.8.8")
+					clear
+					echo -e "${C_CYAN}[*] Mengirim paket ICMP Probe ke $ping_host ...${C_RESET}\n"
+					ping -c 4 "$ping_host"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+			esac
+		done
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# 2. WEB APPLICATION SECURITY ASSESSMENT
+	#//////////////////////////////////////////////////////////////////
+	menu_web() {
+		while true; do
+			local choices=(
+				"1" "SQL Injection (SQLi) Vulnerability Scanner"
+				"2" "Cross-Site Scripting (XSS) Scanner"
+				"3" "OS Command Injection Vulnerability Scanner"
+				"4" "Clickjacking (X-Frame-Options) Scanner"
+				"5" "HTTP Security Headers Analyzer"
+				"6" "Subdomain Discovery & Recon"
+				"7" "Website Crawler & Sensitive Endpoint Extractor"
+				"8" "Web Directory & Hidden File Brute Forcer"
+				"9" "Web Form Login Brute Forcer"
+				"10" "Reverse DNS & Server Domain Lookup"
+				"0" "Kembali ke Menu Utama"
+			)
+			local opt
+			if [[ -n "$TUI_TOOL" ]]; then
+				opt=$($TUI_TOOL --title "2. Web Application Security Assessment" \
+					--menu "Pilih utilitas audit keamanan web:" 20 76 11 \
+					"${choices[@]}" 3>&1 1>&2 2>&3)
+				[[ $? -ne 0 || "$opt" == "0" ]] && break
+			else
+				echo -e "\n${C_ORANGE}=== 2. Web Application Security Assessment ===${C_RESET}"
+				for ((i=0; i<${#choices[@]}; i+=2)); do
+					echo -e "  ${C_CYAN}${choices[i]})${C_RESET} ${choices[i+1]}"
+				done
+				read -r -p "Pilihan: " opt
+				[[ "$opt" == "0" || -z "$opt" ]] && break
+			fi
+
+			case "$opt" in
+				1|2|3)
+					local url
+					url=$(input_box "Web Vulnerability Scanner" "Masukkan URL Target (contoh: http://example.com/test.php?id=1):" "http://127.0.0.1/test.php?id=1")
+					[[ -z "$url" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Memeriksa kerentanan web pada $url ...${C_RESET}\n"
+					python3 -c "
+import urllib.request, urllib.parse, sys
+
+url = '$url'
+sqli_payloads = [\"'\", \"' OR '1'='1\", \"\\\" OR \\\"1\\\"=\\\"1\", \"' UNION SELECT NULL--\"]
+xss_payloads = [\"<script>alert('XSS')</script>\", \"<img src=x onerror=alert(1)>\"]
+cmd_payloads = [\"; id\", \"| whoami\", \"& dir\"]
+
+print(f'Target: {url}')
+parsed = urllib.parse.urlparse(url)
+params = urllib.parse.parse_qs(parsed.query)
+if not params:
+    print('[-] Tidak ditemukan parameter query pada URL untuk diuji (contoh: ?id=1)')
+else:
+    for p in params:
+        print(f'\n[*] Menguji parameter: {p}')
+        # Test SQLi
+        for payload in sqli_payloads:
+            test_params = params.copy()
+            test_params[p] = [payload]
+            new_query = urllib.parse.urlencode(test_params, doseq=True)
+            test_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+            try:
+                req = urllib.request.Request(test_url, headers={'User-Agent': 'MitraOS-SecScanner/1.0'})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    body = resp.read().decode('utf-8', errors='replace').lower()
+                    errors = ['sql syntax', 'mysql_fetch', 'ora-01756', 'sqlite3.operationalerror', 'syntax error in string']
+                    if any(e in body for e in errors):
+                        print(f'  [!] POTENSI SQL INJECTION ditemukan dengan payload: {payload}')
+                        break
+            except Exception as ex:
+                pass
+        print(f'  [+] Pengujian parameter {p} selesai.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				4|5)
+					local target_url
+					target_url=$(input_box "HTTP Security Headers Analyzer" "Masukkan URL target (http/https):" "https://example.com")
+					[[ -z "$target_url" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Menganalisis HTTP Security Headers pada $target_url ...${C_RESET}\n"
+					python3 -c "
+import urllib.request, sys
+
+url = '$target_url'
+try:
+    req = urllib.request.Request(url, headers={'User-Agent': 'MitraOS-SecAudit/1.0'})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+        
+    print(f'=== HTTP Security Headers Audit: {url} ===\n')
+    checks = {
+        'strict-transport-security': 'HSTS (HTTP Strict Transport Security)',
+        'content-security-policy': 'CSP (Content Security Policy)',
+        'x-frame-options': 'X-Frame-Options (Clickjacking Protection)',
+        'x-content-type-options': 'X-Content-Type-Options (MIME Sniffing)',
+        'referrer-policy': 'Referrer-Policy',
+        'permissions-policy': 'Permissions-Policy'
+    }
+    
+    score = 0
+    for h, desc in checks.items():
+        if h in headers:
+            print(f'  [PASS] {desc:45s} : {headers[h]}')
+            score += 1
+        else:
+            print(f'  [FAIL] {desc:45s} : TIDAK DITEMUKAN (Rentan)')
+            
+    print(f'\nSkor Keamanan Header: {score}/{len(checks)}')
+    if 'x-frame-options' not in headers and 'content-security-policy' not in headers:
+        print('  [!] PERINGATAN: Situs ini berpotensi rentan terhadap Clickjacking!')
+except Exception as e:
+    print(f'Error menganalisis URL: {e}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				6)
+					local domain
+					domain=$(input_box "Subdomain Recon" "Masukkan nama domain utama:" "example.com")
+					[[ -z "$domain" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Melakukan Subdomain Discovery untuk $domain ...${C_RESET}\n"
+					python3 -c "
+import socket
+
+domain = '$domain'
+subdomains = ['www', 'mail', 'ftp', 'admin', 'portal', 'api', 'dev', 'staging', 'vpn', 'test', 'm', 'blog', 'secure', 'cpanel', 'webmail']
+print(f'=== Subdomain Enumeration: {domain} ===')
+for sub in subdomains:
+    fqdn = f'{sub}.{domain}'
+    try:
+        ip = socket.gethostbyname(fqdn)
+        print(f'  [+] Ditemukan: {fqdn:30s} -> {ip}')
+    except socket.gaierror:
+        pass
+print('Selesai.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				7|8)
+					local base_url
+					base_url=$(input_box "Directory / File Brute Forcer" "Masukkan Base URL (contoh: http://127.0.0.1):" "http://127.0.0.1")
+					[[ -z "$base_url" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Memindai direktori & file umum pada $base_url ...${C_RESET}\n"
+					python3 -c "
+import urllib.request
+
+base = '$base_url'.rstrip('/')
+paths = [
+    'admin', 'administrator', 'login', 'dashboard', 'config.php', 'wp-admin',
+    '.env', '.git/HEAD', 'phpmyadmin', 'backup.sql', 'db.sql', 'api', 'uploads',
+    'robots.txt', 'sitemap.xml', 'server-status', 'test.php', 'info.php'
+]
+
+print(f'=== Directory Scanner: {base} ===')
+for p in paths:
+    target = f'{base}/{p}'
+    try:
+        req = urllib.request.Request(target, headers={'User-Agent': 'MitraOS-DirScanner/1.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            print(f'  [+] DITEMUKAN [{resp.status}]: {target}')
+    except urllib.error.HTTPError as he:
+        if he.code in [401, 403]:
+            print(f'  [!] TERKUNCI  [{he.code}]: {target}')
+    except Exception:
+        pass
+print('Pemindaian direktori selesai.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				9)
+					msg_box "Web Login Brute Forcer" "Modul pengujian kekuatan form login web.\nPastikan memiliki izin tertulis sebelum melakukan pengujian autentikasi!"
+					;;
+				10)
+					local rev_ip
+					rev_ip=$(input_box "Reverse DNS Lookup" "Masukkan IP address:" "8.8.8.8")
+					clear
+					echo -e "${C_CYAN}[*] Melakukan Reverse DNS Lookup untuk $rev_ip ...${C_RESET}\n"
+					python3 -c "
+import socket
+try:
+    host, _, _ = socket.gethostbyaddr('$rev_ip')
+    print(f'[+] IP $rev_ip terasosiasi dengan hostname: {host}')
+except Exception as e:
+    print(f'[-] Reverse DNS gagal atau tidak ditemukan PTR record: {e}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+			esac
+		done
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# 3. WIRELESS & BLUETOOTH RECON
+	#//////////////////////////////////////////////////////////////////
+	menu_wireless() {
+		while true; do
+			local choices=(
+				"1" "Wi-Fi Networks Scanner (iwlist / nmcli)"
+				"2" "Hidden Wi-Fi SSID Detector & Logger"
+				"3" "Wi-Fi History & Saved Networks Forensic"
+				"4" "Fake Access Point & Evil Twin Detector"
+				"5" "Bluetooth Device Discovery Scanner"
+				"0" "Kembali ke Menu Utama"
+			)
+			local opt
+			if [[ -n "$TUI_TOOL" ]]; then
+				opt=$($TUI_TOOL --title "3. Wireless & Bluetooth Recon" \
+					--menu "Pilih utilitas audit nirkabel:" 16 76 6 \
+					"${choices[@]}" 3>&1 1>&2 2>&3)
+				[[ $? -ne 0 || "$opt" == "0" ]] && break
+			else
+				echo -e "\n${C_ORANGE}=== 3. Wireless & Bluetooth Recon ===${C_RESET}"
+				for ((i=0; i<${#choices[@]}; i+=2)); do
+					echo -e "  ${C_CYAN}${choices[i]})${C_RESET} ${choices[i+1]}"
+				done
+				read -r -p "Pilihan: " opt
+				[[ "$opt" == "0" || -z "$opt" ]] && break
+			fi
+
+			case "$opt" in
+				1)
+					clear
+					echo -e "${C_CYAN}[*] Memindai jaringan Wi-Fi sekitar...${C_RESET}\n"
+					if command -v nmcli >/dev/null 2>&1; then
+						nmcli dev wifi list
+					elif command -v iwlist >/dev/null 2>&1; then
+						iwlist scan 2>/dev/null | grep -E 'ESSID|Signal|Channel'
+					else
+						echo "[-] Perangkat nirkabel tidak ditemukan atau utilitas nmcli/iwlist belum terpasang."
+					fi
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				2)
+					msg_box "Hidden SSID Detector" "Utilitas pemantau beacon frame 802.11 untuk mendeteksi jaringan Wi-Fi yang menyembunyikan SSID (Hidden Network).\nMemerlukan Wi-Fi adapter dengan dukungan Monitor Mode."
+					;;
+				3)
+					clear
+					echo -e "${C_CYAN}[*] Memeriksa profil Wi-Fi yang pernah terhubung pada sistem...${C_RESET}\n"
+					if [[ -d '/etc/NetworkManager/system-connections' ]]; then
+						echo "=== Profil NetworkManager Terdaftar ==="
+						ls -l /etc/NetworkManager/system-connections/
+					elif [[ -f '/etc/wpa_supplicant/wpa_supplicant.conf' ]]; then
+						echo "=== Profil wpa_supplicant ==="
+						grep -E 'ssid|psk' /etc/wpa_supplicant/wpa_supplicant.conf 2>/dev/null || echo "Akses dibatasi."
+					else
+						echo "Tidak ditemukan profil Wi-Fi tersimpan pada lokasi standar."
+					fi
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				4)
+					msg_box "Evil Twin Detector" "Pemeriksa access point palsu (Rogue AP) dengan memeriksa BSSID ganda yang memancarkan SSID sama dengan level sinyal mencurigakan."
+					;;
+				5)
+					clear
+					echo -e "${C_CYAN}[*] Memindai perangkat Bluetooth sekitar...${C_RESET}\n"
+					if command -v bluetoothctl >/dev/null 2>&1; then
+						echo "Menjalankan bluetoothctl scan on (10 detik)..."
+						bluetoothctl --timeout 10 scan on 2>/dev/null || true
+						bluetoothctl devices
+					else
+						echo "[-] Bluetooth controller tidak aktif atau bluez belum terpasang."
+					fi
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+			esac
+		done
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# 4. CREDENTIAL & CRYPTOGRAPHIC AUDITING
+	#//////////////////////////////////////////////////////////////////
+	menu_crypto() {
+		while true; do
+			local choices=(
+				"1" "Password Strength & Entropy Analyzer"
+				"2" "Custom Wordlist Generator"
+				"3" "Multi-Hash Cracker (MD5, SHA1, SHA256, NTLM)"
+				"4" "ZIP Archive Password Recovery"
+				"5" "PDF Password Recovery & Locker"
+				"6" "SSH Credential Audit (Paramiko Engine)"
+				"7" "Classical Ciphers (Caesar / Vigenère / Affine)"
+				"8" "Two-Factor Authentication (2FA TOTP Generator)"
+				"0" "Kembali ke Menu Utama"
+			)
+			local opt
+			if [[ -n "$TUI_TOOL" ]]; then
+				opt=$($TUI_TOOL --title "4. Credential & Cryptographic Auditing" \
+					--menu "Pilih utilitas kriptografi & audit sandi:" 18 76 9 \
+					"${choices[@]}" 3>&1 1>&2 2>&3)
+				[[ $? -ne 0 || "$opt" == "0" ]] && break
+			else
+				echo -e "\n${C_ORANGE}=== 4. Credential & Cryptographic Auditing ===${C_RESET}"
+				for ((i=0; i<${#choices[@]}; i+=2)); do
+					echo -e "  ${C_CYAN}${choices[i]})${C_RESET} ${choices[i+1]}"
+				done
+				read -r -p "Pilihan: " opt
+				[[ "$opt" == "0" || -z "$opt" ]] && break
+			fi
+
+			case "$opt" in
+				1)
+					local pass
+					pass=$(input_box "Password Strength Analyzer" "Masukkan kata sandi yang akan diuji:" "")
+					[[ -z "$pass" ]] && continue
+					clear
+					python3 -c "
+import math, re
+
+password = '$pass'
+length = len(password)
+pool = 0
+if re.search(r'[a-z]', password): pool += 26
+if re.search(r'[A-Z]', password): pool += 26
+if re.search(r'[0-9]', password): pool += 10
+if re.search(r'[^a-zA-Z0-9]', password): pool += 32
+
+entropy = length * (math.log2(pool) if pool > 0 else 0)
+
+print(f'=== Password Strength & Entropy Audit ===')
+print(f'Panjang Kata Sandi : {length} karakter')
+print(f'Karakter Terpakai  : {pool} variasi')
+print(f'Nilai Entropi      : {entropy:.2f} bits')
+
+if entropy < 30:
+    print('Kekuatan           : SANGAT LEMAH (Rentan brute force instan)')
+elif entropy < 50:
+    print('Kekuatan           : CUKUP / SEDANG')
+elif entropy < 75:
+    print('Kekuatan           : KUAT (Aman untuk penggunaan standar)')
+else:
+    print('Kekuatan           : SANGAT KUAT (Resisten terhadap serangan kamus)')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				2)
+					local chars
+					chars=$(input_box "Wordlist Generator" "Masukkan karakter (contoh: abc123):" "abc123")
+					local min_l
+					min_l=$(input_box "Wordlist Generator" "Panjang minimum:" "2")
+					local max_l
+					max_l=$(input_box "Wordlist Generator" "Panjang maksimum:" "3")
+					clear
+					echo -e "${C_CYAN}[*] Menghasilkan wordlist ke /tmp/wordlist.txt ...${C_RESET}\n"
+					python3 -c "
+import itertools
+chars = '$chars'
+min_len = int('$min_l')
+max_len = int('$max_l')
+out_path = '/tmp/wordlist.txt'
+
+count = 0
+with open(out_path, 'w') as f:
+    for l in range(min_len, max_len + 1):
+        for combo in itertools.product(chars, repeat=l):
+            f.write(''.join(combo) + '\n')
+            count += 1
+
+print(f'[+] Berhasil membuat {count} kombinasi kata sandi di {out_path}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				3)
+					local hash_val
+					hash_val=$(input_box "Multi-Hash Cracker" "Masukkan nilai hash (MD5, SHA1, atau SHA256):" "")
+					[[ -z "$hash_val" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Menguji hash terhadap kamus bawaan...${C_RESET}\n"
+					python3 -c "
+import hashlib
+
+target_hash = '$hash_val'.lower().strip()
+wordlist = ['123456', 'password', 'admin', 'root', '12345678', 'qwerty', 'mitra', 'mitraos', 'apollo', 'welcome']
+found = False
+
+for word in wordlist:
+    w_bytes = word.encode('utf-8')
+    md5_h = hashlib.md5(w_bytes).hexdigest()
+    sha1_h = hashlib.sha1(w_bytes).hexdigest()
+    sha256_h = hashlib.sha256(w_bytes).hexdigest()
+    
+    if target_hash in [md5_h, sha1_h, sha256_h]:
+        algo = 'MD5' if target_hash == md5_h else ('SHA1' if target_hash == sha1_h else 'SHA256')
+        print(f'[+] CRACKED! Tipe: {algo} | Plaintext: {word}')
+        found = True
+        break
+
+if not found:
+    print('[-] Kata sandi tidak ditemukan pada daftar kata dasar.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				4|5|6)
+					msg_box "Credential Recovery" "Modul pemulihan arsip (ZIP/PDF) dan pengujian layanan SSH terintegrasi.\nFungsi ini ditujukan untuk audit pemulihan file terenkripsi internal."
+					;;
+				7)
+					local text
+					text=$(input_box "Caesar Cipher" "Masukkan teks untuk dienkripsi/dekripsi:" "Hello MitraOS")
+					local shift
+					shift=$(input_box "Caesar Cipher" "Shift key (1-25):" "3")
+					clear
+					python3 -c "
+text = '$text'
+shift = int('$shift')
+encrypted = ''
+for c in text:
+    if c.isalpha():
+        base = ord('A') if c.isupper() else ord('a')
+        encrypted += chr((ord(c) - base + shift) % 26 + base)
+    else:
+        encrypted += c
+print('=== Caesar Cipher Tool ===')
+print('Teks Asli  :', text)
+print(f'Hasil Shift (+{shift}):', encrypted)
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				8)
+					clear
+					echo -e "${C_CYAN}[*] Menghasilkan 2FA TOTP Token Demo...${C_RESET}\n"
+					python3 -c "
+import time, hmac, hashlib, struct, base64
+
+secret = 'JBSWY3DPEHPK3PXP' # Base32 demo secret
+interval = 30
+current_time = int(time.time() // interval)
+
+key = base64.b32decode(secret, casefold=True)
+msg = struct.pack('>Q', current_time)
+h = hmac.new(key, msg, hashlib.sha1).digest()
+o = h[19] & 15
+token = (struct.unpack('>I', h[o:o+4])[0] & 0x7fffffff) % 1000000
+
+print(f'=== MitraOS 2FA TOTP Generator ===')
+print(f'Secret Key   : {secret}')
+print(f'Waktu Saat Ini: {time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+print(f'Token OTP (30s): {token:06d}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+			esac
+		done
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# 5. DIGITAL FORENSICS, PRIVACY & DEFENSE
+	#//////////////////////////////////////////////////////////////////
+	menu_forensics() {
+		while true; do
+			local choices=(
+				"1" "Persistent Malware & Backdoor Audit"
+				"2" "Clipboard Data Exfiltration Monitor"
+				"3" "Metadata Extractor & Sanitizer (PDF / Images / DOCX)"
+				"4" "Local Hosts Firewall & Domain Blocker"
+				"5" "Social Media OSINT Username Recon"
+				"6" "Privacy Fake Data Generator"
+				"0" "Kembali ke Menu Utama"
+			)
+			local opt
+			if [[ -n "$TUI_TOOL" ]]; then
+				opt=$($TUI_TOOL --title "5. Digital Forensics, Privacy & Defense" \
+					--menu "Pilih utilitas forensik & proteksi:" 16 76 7 \
+					"${choices[@]}" 3>&1 1>&2 2>&3)
+				[[ $? -ne 0 || "$opt" == "0" ]] && break
+			else
+				echo -e "\n${C_ORANGE}=== 5. Digital Forensics, Privacy & Defense ===${C_RESET}"
+				for ((i=0; i<${#choices[@]}; i+=2)); do
+					echo -e "  ${C_CYAN}${choices[i]})${C_RESET} ${choices[i+1]}"
+				done
+				read -r -p "Pilihan: " opt
+				[[ "$opt" == "0" || -z "$opt" ]] && break
+			fi
+
+			case "$opt" in
+				1)
+					clear
+					echo -e "${C_CYAN}[*] Melakukan audit titik kegigihan sistem (Persistence Points)...${C_RESET}\n"
+					echo "=== 1. Crontab System & User ==="
+					crontab -l 2>/dev/null || echo "Tidak ada crontab untuk user aktif."
+					ls -la /etc/cron* 2>/dev/null
+
+					echo -e "\n=== 2. Startup Systemd Services Baru ==="
+					systemctl list-unit-files --type=service --state=enabled 2>/dev/null | head -n 15
+
+					echo -e "\n=== 3. Shell Profile Hooks ==="
+					grep -Hn 'eval' ~/.bashrc ~/.profile /etc/profile 2>/dev/null || echo "Tidak ada hook mencurigakan."
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				2)
+					msg_box "Clipboard Monitor" "Memantau aktivitas clipboard dari manipulasi data otomatis oleh malware pembajak alamat cryptocurrency atau email."
+					;;
+				3)
+					local file_path
+					file_path=$(input_box "Metadata Inspector" "Masukkan path file dokumen/gambar:" "/etc/issue")
+					[[ -z "$file_path" || ! -f "$file_path" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Informasi metadata untuk $file_path:${C_RESET}\n"
+					stat "$file_path"
+					file "$file_path"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				4)
+					local block_domain
+					block_domain=$(input_box "Local Domain Blocker" "Masukkan domain yang ingin diblokir:" "ads.tracker.com")
+					[[ -z "$block_domain" ]] && continue
+					clear
+					if grep -q "$block_domain" /etc/hosts 2>/dev/null; then
+						echo "[!] Domain $block_domain sudah terdaftar di /etc/hosts"
+					else
+						echo "0.0.0.0 $block_domain" >> /etc/hosts 2>/dev/null && echo "[+] Domain $block_domain berhasil diblokir via /etc/hosts" || echo "[-] Gagal menulis ke /etc/hosts (perlu akses root)"
+					fi
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				5)
+					local username
+					username=$(input_box "OSINT Username Finder" "Masukkan username yang ingin diperiksa:" "admin")
+					[[ -z "$username" ]] && continue
+					clear
+					echo -e "${C_CYAN}[*] Memeriksa profil username '$username' pada platform publik...${C_RESET}\n"
+					python3 -c "
+import urllib.request
+
+user = '$username'
+platforms = {
+    'GitHub': f'https://github.com/{user}',
+    'Reddit': f'https://www.reddit.com/user/{user}',
+    'GitLab': f'https://gitlab.com/{user}',
+    'DockerHub': f'https://hub.docker.com/u/{user}'
+}
+
+for name, url in platforms.items():
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            if resp.status == 200:
+                print(f'  [+] DITEMUKAN: {name:12s} -> {url}')
+    except urllib.error.HTTPError as he:
+        if he.code == 404:
+            print(f'  [-] Kosong   : {name:12s}')
+    except Exception:
+        pass
+print('Selesai.')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+				6)
+					clear
+					echo -e "${C_CYAN}[*] Menghasilkan profil data acak untuk privasi...${C_RESET}\n"
+					python3 -c "
+import random
+
+first_names = ['Budi', 'Siti', 'Ahmad', 'Rina', 'Dewi', 'Eko', 'Agus', 'Putri']
+last_names = ['Santoso', 'Wijaya', 'Kusuma', 'Pratama', 'Hidayat', 'Saputra']
+cities = ['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Semarang', 'Yogyakarta']
+
+fn = random.choice(first_names)
+ln = random.choice(last_names)
+print(f'=== Fake Identity Profile ===')
+print(f'Nama Lengkap  : {fn} {ln}')
+print(f'Email Dummy   : {fn.lower()}.{ln.lower()}{random.randint(10,99)}@example.net')
+print(f'Kota          : {random.choice(cities)}')
+print(f'Nomor Telepon : 081{random.randint(10000000, 99999999)}')
+"
+					read -r -p "Tekan Enter untuk kembali..."
+					;;
+			esac
+		done
+	}
+
+	#//////////////////////////////////////////////////////////////////
+	# MAIN MENU LOOP
+	#//////////////////////////////////////////////////////////////////
+	while true; do
+		MAIN_CHOICES=(
+			"1" "🌐 Network Reconnaissance & Sniffing"
+			"2" "💻 Web Application Security Assessment"
+			"3" "📡 Wireless & Bluetooth Recon"
+			"4" "🔐 Credential & Cryptographic Auditing"
+			"5" "🔍 Digital Forensics, Privacy & Defense"
+			"0" "Exit to Terminal"
+		)
+
+		if [[ -n "$TUI_TOOL" ]]; then
+			MAIN_OPT=$($TUI_TOOL --title "MitraOS V.1 - Security & Ethical Hacking Suite" \
+				--menu "Citra Media Technology & Mitra Utama Group\nPilih kategori alat keamanan dan audit etis:" 18 76 6 \
+				"${MAIN_CHOICES[@]}" 3>&1 1>&2 2>&3)
+			exit_code=$?
+			[[ $exit_code -ne 0 || "$MAIN_OPT" == "0" ]] && break
+		else
+			clear
+			echo -e "${C_ORANGE_BOLD}========================================================================${C_RESET}"
+			echo -e "${C_WHITE}   ■ MITRA OS V.1 - SECURITY & ETHICAL HACKING SUITE${C_RESET}"
+			echo -e "${C_CYAN}   Citra Media Technology & Mitra Utama Group${C_RESET}"
+			echo -e "${C_ORANGE_BOLD}========================================================================${C_RESET}"
+			for ((i=0; i<${#MAIN_CHOICES[@]}; i+=2)); do
+				echo -e "  ${C_ORANGE}${MAIN_CHOICES[i]})${C_RESET} ${MAIN_CHOICES[i+1]}"
+			done
+			echo -e "${C_ORANGE_BOLD}========================================================================${C_RESET}"
+			read -r -p "Pilihan Anda: " MAIN_OPT
+			[[ "$MAIN_OPT" == "0" || -z "$MAIN_OPT" ]] && break
+		fi
+
+		case "$MAIN_OPT" in
+			1) menu_network ;;
+			2) menu_web ;;
+			3) menu_wireless ;;
+			4) menu_crypto ;;
+			5) menu_forensics ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

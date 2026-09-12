@@ -1,0 +1,92 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Background Services & Daemon Controller
+	#//////////////////////////////////////////////////////////////////
+
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Services Manager'
+	G_CHECK_ROOT_USER "$@"
+
+	while true; do
+		clear
+		CHOICE=$($TUI_TOOL --title "MitraOS - Services Manager" \
+			--menu "Citra Media Technology & Mitra Utama Group\nKelola daemon latar belakang dan unit systemd:" 17 76 7 \
+			"1" "Daftar Layanan Aktif        : Tampilkan Semua Layanan yang Sedang Berjalan" \
+			"2" "Daftar Layanan Gagal        : Tampilkan Layanan yang Mengalami Kegagalan" \
+			"3" "Jalankan Layanan            : Start Daemon Layanan (e.g., nginx, mariadb)" \
+			"4" "Hentikan Layanan            : Stop Daemon Layanan yang Sedang Berjalan" \
+			"5" "Restart Layanan             : Mulai Ulang Daemon Layanan Sistem" \
+			"6" "Kelola Boot Otomatis        : Enable / Disable Layanan saat Sistem Boot" \
+			"0" "Kembali                     : Kembali ke Menu Utama" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1)
+				running=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}' | head -n 25)
+				G_WHIP_MSG "Running Services" "$running" 20 70
+				;;
+			2)
+				failed=$(systemctl --failed --type=service --no-pager)
+				G_WHIP_MSG "Failed Services" "$failed" 18 75
+				;;
+			3)
+				srv=$($TUI_TOOL --title "Start Service" --inputbox "Service name (e.g., nginx, docker, smbd):" 10 50 3>&1 1>&2 2>&3)
+				[[ -n $srv ]] && systemctl start "$srv" && G_WHIP_MSG "Status" "Started $srv"
+				;;
+			4)
+				srv=$($TUI_TOOL --title "Stop Service" --inputbox "Service name (e.g., nginx, docker, smbd):" 10 50 3>&1 1>&2 2>&3)
+				[[ -n $srv ]] && systemctl stop "$srv" && G_WHIP_MSG "Status" "Stopped $srv"
+				;;
+			5)
+				srv=$($TUI_TOOL --title "Restart Service" --inputbox "Service name (e.g., nginx, docker, smbd):" 10 50 3>&1 1>&2 2>&3)
+				[[ -n $srv ]] && systemctl restart "$srv" && G_WHIP_MSG "Status" "Restarted $srv"
+				;;
+			6)
+				srv=$($TUI_TOOL --title "Enable/Disable Service" --inputbox "Service name:" 10 50 3>&1 1>&2 2>&3)
+				if [[ -n $srv ]]; then
+					if systemctl is-enabled "$srv" >/dev/null 2>&1; then
+						systemctl disable "$srv" && G_WHIP_MSG "Status" "Disabled $srv at boot."
+					else
+						systemctl enable "$srv" && G_WHIP_MSG "Status" "Enabled $srv at boot."
+					fi
+				fi
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

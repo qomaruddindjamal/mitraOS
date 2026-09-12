@@ -1,0 +1,209 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS Snap Layout Manager (Windows 11 Precision Style)
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Location: /opt/mitraos/bin/mitra-snap
+	#//////////////////////////////////////////////////////////////////
+
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	if [[ -f "$SCRIPT_DIR/../lib/mitra-globals" ]]; then
+		. "$SCRIPT_DIR/../lib/mitra-globals"
+	elif [[ -f '/opt/mitraos/lib/mitra-globals' ]]; then
+		. '/opt/mitraos/lib/mitra-globals'
+	fi
+
+	# Screen geometry detection (default 1920x1080 fallback)
+	SCREEN_W=1920
+	SCREEN_H=1080
+	PANEL_TOP_H=32    # Top menu bar reserved height
+	PANEL_BOTTOM_H=48 # Dock / Taskbar reserved height
+	GAP=8             # Gap padding between windows
+
+	if command -v xrandr >/dev/null 2>&1; then
+		RES=$(xrandr 2>/dev/null | grep '\*' | awk '{print $1}' | head -n1)
+		if [[ -n $RES && $RES =~ ([0-9]+)x([0-9]+) ]]; then
+			SCREEN_W=${BASH_REMATCH[1]}
+			SCREEN_H=${BASH_REMATCH[2]}
+		fi
+	fi
+
+	USABLE_TOP=$PANEL_TOP_H
+	USABLE_H=$(( SCREEN_H - PANEL_TOP_H - PANEL_BOTTOM_H ))
+	USABLE_W=$SCREEN_W
+
+	apply_snap() {
+		local x=$1
+		local y=$2
+		local w=$3
+		local h=$4
+		local label="$5"
+
+		# Apply using wmctrl / xdotool if available
+		if command -v wmctrl >/dev/null 2>&1; then
+			# Unmaximize first
+			wmctrl -r :ACTIVE: -b remove,maximized_vert,maximized_horz 2>/dev/null
+			# Move & resize: 0,x,y,w,h
+			wmctrl -r :ACTIVE: -e "0,$x,$y,$w,$h" 2>/dev/null
+			echo "[mitra-snap] Active window snapped: $label ($w x $h at $x,$y)"
+		elif command -v xdotool >/dev/null 2>&1; then
+			WINDOW=$(xdotool getactivewindow 2>/dev/null)
+			if [[ -n $WINDOW ]]; then
+				xdotool windowsize "$WINDOW" "$w" "$h" 2>/dev/null
+				xdotool windowmove "$WINDOW" "$x" "$y" 2>/dev/null
+				echo "[mitra-snap] Active window snapped: $label ($w x $h at $x,$y)"
+			fi
+		else
+			echo "[mitra-snap] Simulating snap ($label): $w x $h at $x,$y"
+		fi
+	}
+
+	layout="$1"
+	case "$layout" in
+		left|left-half|"1")
+			# 50% Left
+			W=$(( USABLE_W / 2 - GAP ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$GAP
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "50% Left Split"
+			;;
+		right|right-half|"2")
+			# 50% Right
+			W=$(( USABLE_W / 2 - GAP * 2 ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$(( USABLE_W / 2 + GAP ))
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "50% Right Split"
+			;;
+		top|top-half|"3")
+			# 50% Top
+			W=$(( USABLE_W - GAP * 2 ))
+			H=$(( USABLE_H / 2 - GAP ))
+			X=$GAP
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "50% Top Split"
+			;;
+		bottom|bottom-half|"4")
+			# 50% Bottom
+			W=$(( USABLE_W - GAP * 2 ))
+			H=$(( USABLE_H / 2 - GAP * 2 ))
+			X=$GAP
+			Y=$(( USABLE_TOP + USABLE_H / 2 + GAP ))
+			apply_snap $X $Y $W $H "50% Bottom Split"
+			;;
+		top-left|tl|"5")
+			# Quad: Top-Left 25%
+			W=$(( USABLE_W / 2 - GAP ))
+			H=$(( USABLE_H / 2 - GAP ))
+			X=$GAP
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "25% Top-Left Quad"
+			;;
+		top-right|tr|"6")
+			# Quad: Top-Right 25%
+			W=$(( USABLE_W / 2 - GAP * 2 ))
+			H=$(( USABLE_H / 2 - GAP ))
+			X=$(( USABLE_W / 2 + GAP ))
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "25% Top-Right Quad"
+			;;
+		bottom-left|bl|"7")
+			# Quad: Bottom-Left 25%
+			W=$(( USABLE_W / 2 - GAP ))
+			H=$(( USABLE_H / 2 - GAP * 2 ))
+			X=$GAP
+			Y=$(( USABLE_TOP + USABLE_H / 2 + GAP ))
+			apply_snap $X $Y $W $H "25% Bottom-Left Quad"
+			;;
+		bottom-right|br|"8")
+			# Quad: Bottom-Right 25%
+			W=$(( USABLE_W / 2 - GAP * 2 ))
+			H=$(( USABLE_H / 2 - GAP * 2 ))
+			X=$(( USABLE_W / 2 + GAP ))
+			Y=$(( USABLE_TOP + USABLE_H / 2 + GAP ))
+			apply_snap $X $Y $W $H "25% Bottom-Right Quad"
+			;;
+		left-23|"9")
+			# Asymmetric: 66% Left
+			W=$(( USABLE_W * 2 / 3 - GAP ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$GAP
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "66% Left (Asymmetric)"
+			;;
+		right-13|"10")
+			# Asymmetric: 33% Right
+			W=$(( USABLE_W / 3 - GAP * 2 ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$(( USABLE_W * 2 / 3 + GAP ))
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "33% Right (Asymmetric)"
+			;;
+		center|focus|"11")
+			# Center floating focus window (70% W, 80% H)
+			W=$(( USABLE_W * 7 / 10 ))
+			H=$(( USABLE_H * 8 / 10 ))
+			X=$(( (USABLE_W - W) / 2 ))
+			Y=$(( USABLE_TOP + (USABLE_H - H) / 2 ))
+			apply_snap $X $Y $W $H "Centered Focus Window"
+			;;
+		col1|col-left|"12")
+			# 3-Column: Left 33%
+			W=$(( USABLE_W / 3 - GAP ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$GAP
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "3-Column Left (33%)"
+			;;
+		col2|col-mid|"13")
+			# 3-Column: Middle 33%
+			W=$(( USABLE_W / 3 - GAP ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$(( USABLE_W / 3 + GAP / 2 ))
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "3-Column Center (33%)"
+			;;
+		col3|col-right|"14")
+			# 3-Column: Right 33%
+			W=$(( USABLE_W / 3 - GAP * 2 ))
+			H=$(( USABLE_H - GAP * 2 ))
+			X=$(( USABLE_W * 2 / 3 + GAP ))
+			Y=$(( USABLE_TOP + GAP ))
+			apply_snap $X $Y $W $H "3-Column Right (33%)"
+			;;
+		maximize|max|"15")
+			if command -v wmctrl >/dev/null 2>&1; then
+				wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz 2>/dev/null
+			fi
+			echo "[mitra-snap] Maximized active window."
+			;;
+		menu|"")
+			# Interactive TUI Snap Layout Selector
+			CHOICE=$(whiptail --title "MitraOS - Snap Layout Selector (Windows 11 Style)" --menu "Pilih tata letak presisi untuk jendela aktif:" 20 74 12 \
+				"1"  "🪟 Split 50% Kiri (Left Half)" \
+				"2"  "🪟 Split 50% Kanan (Right Half)" \
+				"3"  "🪟 Split 50% Atas (Top Half)" \
+				"4"  "🪟 Split 50% Bawah (Bottom Half)" \
+				"5"  "📐 Quad 25% Sudut Kiri Atas" \
+				"6"  "📐 Quad 25% Sudut Kanan Atas" \
+				"7"  "📐 Quad 25% Sudut Kiri Bawah" \
+				"8"  "📐 Quad 25% Sudut Kanan Bawah" \
+				"9"  "📊 Asimetris 66% Kiri (Utama)" \
+				"10" "📊 Asimetris 33% Kanan (Panel Samping)" \
+				"11" "🎯 Center Focus (Jendela Tengah 70%)" \
+				"12" "🏛️ 3 Kolom: Kolom Kiri (33%)" \
+				"13" "🏛️ 3 Kolom: Kolom Tengah (33%)" \
+				"14" "🏛️ 3 Kolom: Kolom Kanan (33%)" \
+				"15" "🔲 Maksimalkan Jendela Penuh" 3>&1 1>&2 2>&3)
+			[[ -n "$CHOICE" ]] && exec "$0" "$CHOICE"
+			;;
+		*)
+			echo "Penggunaan: mitra-snap [layout]"
+			echo "Opsi: left, right, top, bottom, top-left, top-right, bottom-left, bottom-right,"
+			echo "      left-23, right-13, center, col1, col2, col3, maximize, menu"
+			exit 1
+			;;
+	esac
+}

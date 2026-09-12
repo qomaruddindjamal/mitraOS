@@ -1,0 +1,330 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# mitraOS V.1 (Apollo) - Dynamic Login Banner & System Monitor
+	# Strictly engineered for 79-column console terminals
+	# Zero UTF-8 multibyte characters for 100% universal terminal fidelity
+	#//////////////////////////////////////////////////////////////////
+
+	# Source Globals if available with broad discovery
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	# Fallback system defaults so banner NEVER crashes
+	[[ -n $MITRA_VERSION_STRING ]] || MITRA_VERSION_STRING="1.0.0"
+	[[ -n $MITRA_CODENAME ]] || MITRA_CODENAME="Apollo"
+	[[ -n $MITRA_FOUNDER ]] || MITRA_FOUNDER="Qomaruddin Djamal"
+	[[ -n $MITRA_ORGANIZATION ]] || MITRA_ORGANIZATION="Citra Media Technology & Mitra Utama Group"
+
+	# Live Watch Mode: updates every second like a real-time monitor
+	if [[ "$1" == "-w" || "$1" == "--watch" || "$1" == "live" || "$1" == "-l" ]]; then
+		printf '\033[2J\033[H\033[?25l'
+		trap 'printf "\033[?25h\033[0m\n"; exit 0' INT TERM
+		while true; do
+			printf '\033[H'
+			"$0" 0
+			printf '   \033[38;5;244m[Live Monitor - Uptime berjalan - Tekan Ctrl+C untuk kembali]\033[0m   \n'
+			sleep 1
+		done
+	fi
+
+	# Clear terminal by default unless explicitly asked not to (via '0', '-n', or '--no-clear')
+	if [[ "$1" != "0" && "$1" != "-n" && "$1" != "--no-clear" ]]; then
+		clear 2>/dev/null || printf '\033[2J\033[H'
+	fi
+
+	C_RESET=$'\033[0m'
+	C_BOLD=$'\033[1m'
+	C_ORANGE=$'\033[38;5;208m'
+	C_ORANGE_BOLD=$'\033[1;38;5;208m'
+	C_CYAN=$'\033[38;5;45m'
+	C_CYAN_BOLD=$'\033[1;38;5;45m'
+	C_BLUE=$'\033[38;5;39m'
+	C_GREEN=$'\033[1;32m'
+	C_GREEN_BOLD=$'\033[1;32m'
+	C_YELLOW=$'\033[1;33m'
+	C_YELLOW_BOLD=$'\033[1;33m'
+	C_RED=$'\033[1;31m'
+	C_WHITE=$'\033[1;37m'
+	C_GREY=$'\033[38;5;244m'
+	C_DARK_GREY=$'\033[38;5;240m'
+
+	SPACES="                                                                "
+
+	draw_bar()
+	{
+		local pct=$1
+		local width=12
+		local filled=$(( pct * width / 100 ))
+		(( pct > 0 && filled == 0 )) && filled=1
+		(( filled > width )) && filled=$width
+		(( filled < 0 )) && filled=0
+		local empty=$(( width - filled ))
+		
+		local C_BAR
+		if (( pct >= 76 )); then
+			C_BAR="${C_RED}"
+		elif (( pct >= 66 )); then
+			C_BAR="${C_YELLOW}"
+		else
+			C_BAR="${C_GREEN}"
+		fi
+
+		local bar_filled=""
+		local bar_empty=""
+		for ((i=0; i<filled; i++)); do bar_filled+="#"; done
+		for ((i=0; i<empty; i++)); do bar_empty+="."; done
+		echo "${C_GREY}[${C_RESET}${C_BAR}${bar_filled}${C_RESET}${C_DARK_GREY}${bar_empty}${C_RESET}${C_GREY}]${C_RESET}"
+	}
+
+	# LiveCD / Live USB (ISO) vs Installed System detection
+	is_live=0
+	if [[ -n "$MITRA_LIVECD" || -n "$APOLLO_LIVECD" ]]; then
+		is_live=1
+	elif [[ -f '/etc/mitra_live' || -f '/etc/apollo_live' || -d '/run/live' || -d '/lib/live/mount' ]]; then
+		is_live=1
+	elif [[ -f '/proc/cmdline' ]] && grep -Eq '(boot=live|apollo_live|mitra_live|live-media|findiso|iso-scan)' /proc/cmdline 2>/dev/null; then
+		is_live=1
+	elif [[ -f '/proc/mounts' ]] && grep -Eq ' / (overlay|cow|aufs|iso9660) ' /proc/mounts 2>/dev/null; then
+		is_live=1
+	fi
+
+	# Header Mode / Architecture detection
+	if (( is_live == 1 )); then
+		G_ARCH="LiveCD Workstation"
+	else
+		case $(uname -m 2>/dev/null || echo "x86_64") in
+			x86_64)          G_ARCH="64-bit x86 Workstation" ;;
+			aarch64|arm64)   G_ARCH="64-bit ARM Workstation" ;;
+			armv7*|armv8l)   G_ARCH="32-bit ARM Single Board" ;;
+			i*86)            G_ARCH="32-bit x86 PC" ;;
+			*)               G_ARCH="$(uname -m) Workstation" ;;
+		esac
+	fi
+
+	# Dynamic Header border dashes (Outer box width = 66 chars: "+-- mitraOS V.1 (Apollo) -- " [28] + G_ARCH + " " + dashes + "+")
+	dash_count=$(( 66 - 28 - ${#G_ARCH} - 2 ))
+	(( dash_count < 2 )) && dash_count=2
+	header_dashes=""
+	for ((d=0; d<dash_count; d++)); do header_dashes+="-"; done
+
+	# Host & Network detection
+	hname=$(cat /etc/hostname 2>/dev/null || hostname 2>/dev/null || echo "apollo")
+	[[ -z "$hname" ]] && hname="apollo"
+
+	net_info=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7 " / " $5; exit}')
+	if [[ -z "$net_info" ]]; then
+		dev=$(ip -o -4 addr show 2>/dev/null | grep -v ' 127\.' | awk '{print $2; exit}')
+		ip_addr=$(ip -o -4 addr show 2>/dev/null | grep -v ' 127\.' | awk '{print $4; exit}' | cut -d/ -f1)
+		[[ -n "$ip_addr" && -n "$dev" ]] && net_info="${ip_addr} / ${dev}"
+	fi
+
+	if [[ -n "$net_info" ]]; then
+		host_plain="${hname} (Online: ${net_info})"
+		host_disp="${C_WHITE}${hname}${C_RESET} ${C_CYAN}(Online: ${net_info})${C_RESET}"
+	else
+		host_plain="${hname} (Offline)"
+		host_disp="${C_WHITE}${hname}${C_RESET} ${C_RED}(Offline)${C_RESET}"
+	fi
+
+	# Founder
+	founder_plain="Qomaruddin Djamal"
+	founder_disp="${C_WHITE}${C_BOLD}Qomaruddin Djamal${C_RESET}"
+
+	# Company
+	company_plain="Citra Media Technology & Mitra Utama Group"
+	company_disp="${C_WHITE}Citra Media Technology & Mitra Utama Group${C_RESET}"
+
+	# Website
+	website_plain="https://qomaruddindjamal.github.io"
+	website_disp="${C_CYAN}https://qomaruddindjamal.github.io${C_RESET}"
+
+	# Support: citramedia.info@gmail.com & mitrautama.info@gmail.com
+	support_plain="citramedia.info@gmail.com & mitrautama.info@gmail.com"
+	support_disp="${C_WHITE}citramedia.info@gmail.com ${C_GREY}&${C_RESET} ${C_WHITE}mitrautama.info@gmail.com${C_RESET}"
+
+	# Kernel & Uptime
+	kernel_ver=$(uname -r 2>/dev/null || busybox uname -r 2>/dev/null || echo "6.1.0-52-amd64")
+	if [[ -f '/proc/uptime' ]]; then
+		up_secs=$(cut -d '.' -f 1 /proc/uptime)
+		up_days=$(( up_secs / 86400 ))
+		up_hours=$(( (up_secs % 86400) / 3600 ))
+		up_mins=$(( (up_secs % 3600) / 60 ))
+		up_secs_rem=$(( up_secs % 60 ))
+		if (( up_days > 0 )); then
+			uptime_str=$(printf "%dd %02d:%02d:%02d" "$up_days" "$up_hours" "$up_mins" "$up_secs_rem")
+		else
+			uptime_str=$(printf "%02d:%02d:%02d" "$up_hours" "$up_mins" "$up_secs_rem")
+		fi
+	else
+		uptime_str="00:00:00"
+	fi
+
+	# Realtime Dynamic CPU Usage & Cores
+	n_cores=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)
+	read -r load_1 _ < /proc/loadavg 2>/dev/null || load_1="0.00"
+	load_int=${load_1%%.*}
+	[[ -z "$load_int" ]] && load_int=0
+	if (( load_int >= 4 )); then
+		C_LOAD="${C_RED}"
+	elif (( load_int >= 2 )); then
+		C_LOAD="${C_YELLOW}"
+	else
+		C_LOAD="${C_GREEN}"
+	fi
+
+	cpu_pct=0
+	if [[ -f '/proc/stat' ]]; then
+		read _ u1 n1 s1 i1 w1 q1 sq1 _ < /proc/stat
+		sleep 0.08
+		read _ u2 n2 s2 i2 w2 q2 sq2 _ < /proc/stat
+		idle_delta=$(( (i2 + w2) - (i1 + w1) ))
+		total_delta=$(( (u2 + n2 + s2 + i2 + w2 + q2 + sq2) - (u1 + n1 + s1 + i1 + w1 + q1 + sq1) ))
+		if (( total_delta > 0 )); then
+			cpu_pct=$(( (total_delta - idle_delta) * 100 / total_delta ))
+		fi
+	fi
+	(( cpu_pct < 0 )) && cpu_pct=0
+	(( cpu_pct > 100 )) && cpu_pct=100
+
+	bar_ascii="[############]"
+
+	# Dynamic CPU % color
+	if (( cpu_pct >= 76 )); then C_CPU_PCT="${C_RED}"; elif (( cpu_pct >= 66 )); then C_CPU_PCT="${C_YELLOW}"; else C_CPU_PCT="${C_GREEN}"; fi
+	cpu_bar=$(draw_bar "$cpu_pct")
+	cpu_pct_fmt=$(printf "%3d%%" "$cpu_pct")
+	cpu_disp="${cpu_bar} ${C_CPU_PCT}${cpu_pct_fmt}${C_RESET} ${C_GREY}(${C_ORANGE}${n_cores} Cores${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}Load:${C_RESET} ${C_LOAD}${load_1}${C_RESET}${C_GREY})${C_RESET}"
+	cpu_plain="${bar_ascii} ${cpu_pct_fmt} (${n_cores} Cores - Load: ${load_1})"
+
+	# Realtime Dynamic Memory Usage
+	if [[ -f '/proc/meminfo' ]]; then
+		mem_total=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+		mem_avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+		[[ -n $mem_avail ]] || mem_avail=$(awk '/MemFree/ {print int($2/1024)}' /proc/meminfo)
+		mem_used=$(( mem_total - mem_avail ))
+		(( mem_used < 0 )) && mem_used=0
+		mem_pct=$(( mem_used * 100 / (mem_total > 0 ? mem_total : 1) ))
+	else
+		mem_used=0; mem_total=0; mem_pct=0
+	fi
+	if (( mem_pct >= 76 )); then C_MEM_PCT="${C_RED}"; elif (( mem_pct >= 66 )); then C_MEM_PCT="${C_YELLOW}"; else C_MEM_PCT="${C_GREEN}"; fi
+	mem_bar=$(draw_bar "$mem_pct")
+	mem_pct_fmt=$(printf "%3d%%" "$mem_pct")
+	mem_disp="${mem_bar} ${C_MEM_PCT}${mem_pct_fmt}${C_RESET} ${C_GREY}(${C_WHITE}${mem_used}${C_RESET} ${C_GREY}/${C_RESET} ${C_WHITE}${mem_total} MB${C_RESET}${C_GREY})${C_RESET}"
+	mem_plain="${bar_ascii} ${mem_pct_fmt} (${mem_used} / ${mem_total} MB)"
+
+	# Realtime Dynamic Storage Usage
+	disk_total=$(df -h / 2>/dev/null | awk 'NR>1 {print $(NF-4); exit}')
+	disk_used=$(df -h / 2>/dev/null | awk 'NR>1 {print $(NF-3); exit}')
+	disk_pct_str=$(df -h / 2>/dev/null | awk 'NR>1 {print $(NF-1); exit}')
+	disk_pct_num=${disk_pct_str//%/}
+	[[ $disk_pct_num =~ ^[0-9]+$ ]] || disk_pct_num=0
+	[[ -z "$disk_total" || "$disk_total" == "0" || "$disk_total" == "/" ]] && disk_total="0M" && disk_used="0M"
+	if (( disk_pct_num >= 76 )); then C_DISK_PCT="${C_RED}"; elif (( disk_pct_num >= 66 )); then C_DISK_PCT="${C_YELLOW}"; else C_DISK_PCT="${C_GREEN}"; fi
+	disk_bar=$(draw_bar "$disk_pct_num")
+	disk_pct_fmt=$(printf "%3d%%" "$disk_pct_num")
+	disk_disp="${disk_bar} ${C_DISK_PCT}${disk_pct_fmt}${C_RESET} ${C_GREY}(${C_WHITE}${disk_used}${C_RESET} ${C_GREY}/${C_RESET} ${C_WHITE}${disk_total}${C_RESET}${C_GREY})${C_RESET}"
+	disk_plain="${bar_ascii} ${disk_pct_fmt} (${disk_used} / ${disk_total})"
+
+	# Pure bash substring padding (Zero subshells)
+	n_host=$(( 52 - ${#host_plain} )); (( n_host < 0 )) && n_host=0
+	p_host="${SPACES:0:n_host}"
+
+	n_founder=$(( 52 - ${#founder_plain} )); (( n_founder < 0 )) && n_founder=0
+	p_founder="${SPACES:0:n_founder}"
+
+	n_company=$(( 52 - ${#company_plain} )); (( n_company < 0 )) && n_company=0
+	p_company="${SPACES:0:n_company}"
+
+	n_website=$(( 52 - ${#website_plain} )); (( n_website < 0 )) && n_website=0
+	p_website="${SPACES:0:n_website}"
+
+	p_support=""
+
+	n_cpu=$(( 52 - ${#cpu_plain} )); (( n_cpu < 0 )) && n_cpu=0
+	p_cpu="${SPACES:0:n_cpu}"
+
+	n_mem=$(( 52 - ${#mem_plain} )); (( n_mem < 0 )) && n_mem=0
+	p_mem="${SPACES:0:n_mem}"
+
+	n_disk=$(( 52 - ${#disk_plain} )); (( n_disk < 0 )) && n_disk=0
+	p_disk="${SPACES:0:n_disk}"
+
+	div_dashes=""
+	for ((d=0; d<64; d++)); do div_dashes+="-"; done
+
+	# 10-line concentric diamond logo (12 columns) paired with 66-column telemetry box
+	echo "${C_ORANGE}     /\\     ${C_RESET} ${C_CYAN}+-- ${C_WHITE}mitraOS ${C_ORANGE}V.1 ${C_CYAN}(Apollo) -- ${C_WHITE}${G_ARCH}${C_CYAN} ${header_dashes}+${C_RESET}"
+	echo "${C_ORANGE}    /  \\    ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Host:     ${C_RESET}${host_disp}${p_host} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE}   / ${C_CYAN}/\\${C_ORANGE} \\   ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Founder:  ${C_RESET}${founder_disp}${p_founder} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE}  / ${C_CYAN}/  \\${C_ORANGE} \\  ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Company:  ${C_RESET}${company_disp}${p_company} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE} / ${C_CYAN}/ ${C_WHITE}/\\${C_CYAN} \\${C_ORANGE} \\ ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Website:  ${C_RESET}${website_disp}${p_website} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE} \\ ${C_CYAN}\\ ${C_WHITE}\\/${C_CYAN} /${C_ORANGE} / ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Support: ${C_RESET}${support_disp}${p_support} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE}  \\ ${C_CYAN}\\  /${C_ORANGE} /  ${C_RESET} ${C_CYAN}+${div_dashes}+${C_RESET}"
+	echo "${C_ORANGE}   \\ ${C_CYAN}\\/${C_ORANGE} /   ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}CPU:      ${C_RESET}${cpu_disp}${p_cpu} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE}    \\  /    ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Memory:   ${C_RESET}${mem_disp}${p_mem} ${C_CYAN}|${C_RESET}"
+	echo "${C_ORANGE}     \\/     ${C_RESET} ${C_CYAN}|${C_RESET} ${C_ORANGE}Storage:  ${C_RESET}${disk_disp}${p_disk} ${C_CYAN}|${C_RESET}"
+	echo "             ${C_CYAN}+${div_dashes}+${C_RESET}"
+	echo " ${C_GREY}System:${C_RESET}   ${C_WHITE}Kernel ${kernel_ver}${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}Uptime: ${uptime_str}${C_RESET} ${C_GREY}-${C_RESET} ${C_CYAN}${n_cores} Cores (${load_1} Load)${C_RESET}"
+	echo " ${C_GREY}Commands:${C_RESET} ${C_CYAN_BOLD}mitra${C_RESET} (Control Center)        ${C_GREY}-${C_RESET} ${C_ORANGE_BOLD}mitra-asisten${C_RESET} (Remote Assist)"
+	echo "           ${C_CYAN_BOLD}mitra-apps${C_RESET} (Multi-OS App Hub)  ${C_GREY}-${C_RESET} ${C_GREEN_BOLD}mitra-config${C_RESET} (Settings)"
+	ssh_ip=""
+	if [[ -n "$net_info" ]]; then
+		ssh_ip="${net_info%% *}"
+	fi
+	[[ -z "$ssh_ip" ]] && ssh_ip="<IP>"
+	if pidof dropbear >/dev/null 2>&1 || pidof sshd >/dev/null 2>&1; then
+		if (( is_live == 1 )); then
+			echo "           ${C_GREEN_BOLD}SSH Server${C_RESET}: ${C_WHITE}ssh root@${ssh_ip}${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}Port 22 (Aktif)${C_RESET} ${C_GREY}-${C_RESET} ${C_YELLOW}Password: mitra${C_RESET}"
+		else
+			echo "           ${C_GREEN_BOLD}SSH Server${C_RESET}: ${C_WHITE}ssh root@${ssh_ip}${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}Port 22 (Aktif)${C_RESET}"
+		fi
+	fi
+	if netstat -tln 2>/dev/null | grep -qE ":(80|443|8080) " || pidof nginx >/dev/null 2>&1 || pidof lighttpd >/dev/null 2>&1 || pidof apache2 >/dev/null 2>&1; then
+		echo "           ${C_CYAN_BOLD}Web Server${C_RESET}: ${C_WHITE}http://${ssh_ip}${C_RESET} ${C_GREY}-${C_RESET} ${C_GREEN}Port 80 (HTTP) - Port 443 (HTTPS)${C_RESET}"
+	fi
+
+	if [[ ! -f '/tmp/webremote_disabled' ]] && { pidof cloudflared >/dev/null 2>&1 || pidof ttyd >/dev/null 2>&1; }; then
+		cf_url=""
+		if [[ -s '/tmp/cloudflared_url' ]]; then
+			cf_url=$(head -n 1 /tmp/cloudflared_url 2>/dev/null)
+		elif [[ -f '/tmp/cloudflared.log' ]]; then
+			cf_url=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | grep -v 'api\.trycloudflare' | head -n 1)
+			[[ -n "$cf_url" ]] && echo "$cf_url" > /tmp/cloudflared_url 2>/dev/null
+		fi
+		if [[ -n "$cf_url" ]]; then
+			if (( is_live == 1 )); then
+				echo "           ${C_GREEN_BOLD}Web Remote${C_RESET}: ${C_WHITE}${cf_url}${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}(Aktif)${C_RESET} ${C_GREY}-${C_RESET} ${C_YELLOW}Password: mitra${C_RESET}"
+			else
+				echo "           ${C_GREEN_BOLD}Web Remote${C_RESET}: ${C_WHITE}${cf_url}${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}(Aktif)${C_RESET}"
+			fi
+		else
+			if (( is_live == 1 )); then
+				echo "           ${C_GREEN_BOLD}Web Remote${C_RESET}: ${C_WHITE}Menghubungkan tunnel...${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}(Inisialisasi)${C_RESET} ${C_GREY}-${C_RESET} ${C_YELLOW}Password: mitra${C_RESET}"
+			else
+				echo "           ${C_GREEN_BOLD}Web Remote${C_RESET}: ${C_WHITE}Menghubungkan tunnel...${C_RESET} ${C_GREY}-${C_RESET} ${C_ORANGE}(Inisialisasi)${C_RESET}"
+			fi
+		fi
+	fi
+
+	echo ""
+}

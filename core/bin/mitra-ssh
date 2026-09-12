@@ -1,0 +1,193 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Remote SSH & PuTTY Management Utility
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Location: /boot/apollo/mitra-ssh
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - SSH & Remote Access'
+	G_CHECK_ROOT_USER "$@"
+
+	get_ip() {
+		local ip_found
+		ip_found=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+		if [[ -z "$ip_found" ]]; then
+			ip_found=$(ip -o -4 addr show 2>/dev/null | grep -v ' 127\.' | awk '{print $4; exit}' | cut -d/ -f1)
+		fi
+		echo "${ip_found:-127.0.0.1}"
+	}
+
+	get_ssh_status() {
+		if pidof dropbear >/dev/null 2>&1 || pidof sshd >/dev/null 2>&1 || pgrep dropbear >/dev/null 2>&1 || pgrep sshd >/dev/null 2>&1; then
+			echo "AKTIF (Running - Port 22)"
+		else
+			echo "NONAKTIF (Stopped)"
+		fi
+	}
+
+	start_ssh() {
+		rm -f /tmp/ssh_disabled 2>/dev/null || true
+		mkdir -p /etc/dropbear /var/run /var/log
+		chmod 700 /etc/dropbear 2>/dev/null || true
+		chmod 600 /etc/dropbear/* 2>/dev/null || true
+
+		if [[ ! -f /etc/dropbear/dropbear_ed25519_host_key ]] && command -v dropbearkey >/dev/null 2>&1; then
+			dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key >/dev/null 2>&1 || true
+		fi
+		if [[ ! -f /etc/dropbear/dropbear_rsa_host_key ]] && command -v dropbearkey >/dev/null 2>&1; then
+			dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key -s 2048 >/dev/null 2>&1 || true
+		fi
+
+		if ! pidof dropbear >/dev/null 2>&1 && ! pgrep dropbear >/dev/null 2>&1; then
+			for db_bin in /usr/sbin/dropbear /sbin/dropbear /usr/bin/dropbear /bin/dropbear; do
+				if [[ -x "$db_bin" ]]; then
+					"$db_bin" -R -B -p 22 2>/dev/null &
+					break
+				fi
+			done
+			sleep 0.5
+		fi
+	}
+
+	stop_ssh() {
+		touch /tmp/ssh_disabled 2>/dev/null || true
+		killall -9 dropbear 2>/dev/null || true
+		killall -9 sshd 2>/dev/null || true
+		pkill -9 dropbear 2>/dev/null || true
+		pkill -9 sshd 2>/dev/null || true
+		sleep 0.3
+	}
+
+	while true; do
+		clear
+		CURR_IP=$(get_ip)
+		STATUS=$(get_ssh_status)
+		CF_URL=""
+		[[ -s /tmp/cloudflared_url ]] && CF_URL=$(head -n 1 /tmp/cloudflared_url 2>/dev/null)
+
+		CHOICE=$($TUI_TOOL --title "MitraOS - Remote SSH & Web Access Manager" \
+			--menu "Citra Media Technology & Mitra Utama Group\nStatus Layanan SSH : [$STATUS]\nAlamat IP Sistem   : $CURR_IP (Port: 22)\nWeb Remote Tunnel  : ${CF_URL:-Sedang memuat / offline}\nDefault Login      : root / mitra\nDefault Password   : mitra\n\nPilih operasi Remote:" 22 76 8 \
+			"1" "Jalankan / Restart SSH      : Mulai ulang daemon SSH Dropbear (Port 22)" \
+			"2" "Hentikan Layanan SSH        : Nonaktifkan akses remote daemon" \
+			"3" "Ubah Password SSH / Root    : Ganti kata sandi akses root & user mitra" \
+			"4" "Lihat Koneksi Aktif         : Pantau sesi login dan koneksi port 22" \
+			"5" "Panduan PuTTY & Terminal    : Tampilkan instruksi lengkap cara remote" \
+			"6" "Tes Port SSH Lokal          : Uji respon socket SSH di port 22" \
+			"7" "Restart Web Remote (Tunnel) : Mulai ulang tunnel browser publik Cloudflare" \
+			"0" "Kembali                     : Kembali ke Menu Sebelumnya" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1)
+				stop_ssh
+				start_ssh
+				G_WHIP_MSG "Status SSH" "Layanan SSH Dropbear berhasil dijalankan pada port 22.\nAlamat IP : $CURR_IP\nLogin     : root / mitra\nRemote    : ssh root@$CURR_IP -p 22" 12 65
+				;;
+			2)
+				stop_ssh
+				G_WHIP_MSG "Status SSH" "Layanan SSH telah berhasil dihentikan (Nonaktif)." 8 55
+				;;
+			3)
+				NEWPASS=$($TUI_TOOL --title "Ganti Password" --passwordbox "Masukkan password baru untuk root & user mitra:" 10 55 3>&1 1>&2 2>&3)
+				if [[ -n "$NEWPASS" ]]; then
+					echo "root:${NEWPASS}" | chpasswd 2>/dev/null || true
+					echo "mitra:${NEWPASS}" | chpasswd 2>/dev/null || true
+					if command -v mkpasswd >/dev/null 2>&1; then
+						HASH=$(mkpasswd -m sha-512 "$NEWPASS" 2>/dev/null)
+						if [[ -n "$HASH" ]]; then
+							echo "root:${HASH}:19000:0:99999:7:::" > /etc/shadow
+							echo "mitra:${HASH}:19000:0:99999:7:::" >> /etc/shadow
+						fi
+					fi
+					G_WHIP_MSG "Berhasil" "Password akun root & mitra berhasil diperbarui." 8 50
+				fi
+				;;
+			4)
+				active_conn=$(netstat -tn 2>/dev/null | grep ':22' || ss -tn 2>/dev/null | grep ':22' || echo "Tidak ada koneksi SSH aktif saat ini.")
+				G_WHIP_MSG "Koneksi SSH Aktif" "$active_conn" 16 70
+				;;
+			5)
+				GUIDE="PANDUAN KONEKSI REMOTE MITRAOS:\n\n"
+				GUIDE+="1. Menggunakan Windows PowerShell / Terminal:\n"
+				GUIDE+="   Ketik perintah:\n"
+				GUIDE+="   ssh root@$CURR_IP\n"
+				GUIDE+="   Password: mitra\n\n"
+				GUIDE+="2. Menggunakan PuTTY (Windows GUI):\n"
+				GUIDE+="   - Buka aplikasi PuTTY\n"
+				GUIDE+="   - Host Name: $CURR_IP\n"
+				GUIDE+="   - Port: 22\n"
+				GUIDE+="   - Connection Type: SSH\n"
+				GUIDE+="   - Klik tombol 'Open'\n"
+				GUIDE+="   - Login as: root\n"
+				GUIDE+="   - Password: mitra\n\n"
+				GUIDE+="3. Menggunakan PuTTY CLI (plink):\n"
+				GUIDE+="   plink.exe -ssh -l root -pw mitra $CURR_IP\n"
+				G_WHIP_MSG "Panduan Koneksi Remote" "$GUIDE" 22 72
+				;;
+			6)
+				test_res=$(nc -z -v -w 2 127.0.0.1 22 2>&1 || echo "Gagal terhubung ke port 22.")
+				G_WHIP_MSG "Hasil Uji Socket Port 22" "$test_res" 10 50
+				;;
+			7)
+				killall -9 cloudflared 2>/dev/null || true
+				pkill -9 cloudflared 2>/dev/null || true
+				rm -f /tmp/cloudflared_url
+				for cf_b in /usr/bin/cloudflared /bin/cloudflared; do
+					if [[ -x "$cf_b" ]]; then
+						"$cf_b" tunnel --url http://127.0.0.1:7681 >/tmp/cloudflared.log 2>&1 &
+						break
+					fi
+				done
+				for i in $(seq 1 12); do
+					sleep 0.5
+					url=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | grep -v 'api\.trycloudflare' | head -n 1)
+					if [[ -n "$url" ]]; then
+						echo "$url" > /tmp/cloudflared_url
+						break
+					fi
+				done
+				new_url=$(head -n 1 /tmp/cloudflared_url 2>/dev/null)
+				G_WHIP_MSG "Web Remote Cloudflare" "Layanan Quick Tunnel Cloudflare telah dimulai ulang.\n\nAlamat Browser : ${new_url:-Menghubungkan...}\nLogin          : root / mitra\nPassword       : mitra" 12 70
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

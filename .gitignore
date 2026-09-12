@@ -1,0 +1,17 @@
+# Build output and temporary staging
+build/_staging/
+*.iso
+*.vhdx
+*.avhdx
+build/initrd.cpio
+build/screen_thumb.bin
+build/*.png
+*.tmp
+*.log
+__pycache__/
+
+# Large binary blobs & compiled OS images (Build outputs / Kernel images)
+*.img
+boot/vmlinuz
+boot/kernel/vmlinuz
+rootfs/usr/bin/cloudflared

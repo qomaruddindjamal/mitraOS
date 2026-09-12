@@ -1,0 +1,6 @@
+#!/bin/bash
+# MitraOS V.1 - System Reboot Controller
+echo "Memulai ulang sistem MitraOS secara aman..."
+sync
+echo 1 > /proc/sys/kernel/sysrq 2>/dev/null
+busybox reboot -f 2>/dev/null || /bin/busybox reboot -f 2>/dev/null || reboot -f 2>/dev/null || systemctl reboot 2>/dev/null || echo b > /proc/sysrq-trigger

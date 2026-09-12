@@ -1,0 +1,12 @@
+[Unit]
+Description=MitraOS Automated First-Boot Setup
+After=network.target local-fs.target
+ConditionPathExists=/boot/mitra.txt
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mitraos/bin/mitra-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

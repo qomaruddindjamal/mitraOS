@@ -1,0 +1,353 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Remote Web Assistance & Helpdesk Manager
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	# Location: /boot/apollo/mitra-asisten
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - Asisten Bantuan Remote'
+	G_CHECK_ROOT_USER "$@"
+
+	CONF_FILE="/etc/mitra_tunnel.conf"
+
+	load_config() {
+		TUNNEL_MODE="quick"
+		CUSTOM_DOMAIN=""
+		TUNNEL_TOKEN=""
+		if [[ -f "$CONF_FILE" ]]; then
+			. "$CONF_FILE" 2>/dev/null || true
+		fi
+	}
+
+	save_config() {
+		cat << EOF_CONF > "$CONF_FILE"
+# MitraOS Remote Tunnel Configuration
+TUNNEL_MODE="${TUNNEL_MODE:-quick}"
+CUSTOM_DOMAIN="${CUSTOM_DOMAIN}"
+TUNNEL_TOKEN="${TUNNEL_TOKEN}"
+EOF_CONF
+		chmod 600 "$CONF_FILE" 2>/dev/null || true
+	}
+
+	get_ip() {
+		local ip_found
+		ip_found=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+		if [[ -z "$ip_found" ]]; then
+			ip_found=$(ip -o -4 addr show 2>/dev/null | grep -v ' 127\.' | awk '{print $4; exit}' | cut -d/ -f1)
+		fi
+		echo "${ip_found:-127.0.0.1}"
+	}
+
+	get_web_url() {
+		load_config
+		local url=""
+		if [[ -f /tmp/webremote_disabled ]]; then
+			echo ""
+			return
+		fi
+		if [[ "$TUNNEL_MODE" == "custom" && -n "$CUSTOM_DOMAIN" ]]; then
+			local clean_dom="${CUSTOM_DOMAIN#https://}"
+			clean_dom="${clean_dom#http://}"
+			url="https://${clean_dom}"
+		elif [[ -s /tmp/cloudflared_url ]]; then
+			url=$(head -n 1 /tmp/cloudflared_url 2>/dev/null)
+		elif [[ -f /tmp/cloudflared.log ]]; then
+			url=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | grep -v 'api\.trycloudflare' | head -n 1)
+			[[ -n "$url" ]] && echo "$url" > /tmp/cloudflared_url 2>/dev/null
+		fi
+		echo "$url"
+	}
+
+	get_web_status() {
+		load_config
+		if [[ -f /tmp/webremote_disabled ]] || ! pidof cloudflared >/dev/null 2>&1 || ! pidof ttyd >/dev/null 2>&1; then
+			echo "NONAKTIF"
+		else
+			if [[ "$TUNNEL_MODE" == "custom" && -n "$CUSTOM_DOMAIN" ]]; then
+				echo "AKTIF (Domain Kustom)"
+			else
+				echo "AKTIF (Quick Tunnel)"
+			fi
+		fi
+	}
+
+	start_web_remote() {
+		rm -f /tmp/webremote_disabled 2>/dev/null || true
+		load_config
+		local ttyd_bin=""
+		local cf_bin=""
+		[ -x /bin/ttyd ] && ttyd_bin="/bin/ttyd"
+		[ -z "$ttyd_bin" ] && [ -x /usr/bin/ttyd ] && ttyd_bin="/usr/bin/ttyd"
+
+		[ -x /bin/cloudflared ] && cf_bin="/bin/cloudflared"
+		[ -z "$cf_bin" ] && [ -x /usr/bin/cloudflared ] && cf_bin="/usr/bin/cloudflared"
+
+		if [ -n "$ttyd_bin" ] && ! pidof ttyd >/dev/null 2>&1; then
+			$ttyd_bin -W -p 7681 -c root:mitra /bin/bash --login >/dev/null 2>&1 &
+		fi
+
+		killall -9 cloudflared 2>/dev/null || true
+		pkill -9 cloudflared 2>/dev/null || true
+		rm -f /tmp/cloudflared_url /tmp/cloudflared.log 2>/dev/null || true
+
+		if [ -n "$cf_bin" ]; then
+			if [[ "$TUNNEL_MODE" == "custom" && -n "$TUNNEL_TOKEN" ]]; then
+				$cf_bin tunnel run --token "$TUNNEL_TOKEN" >/tmp/cloudflared.log 2>&1 &
+				if [[ -n "$CUSTOM_DOMAIN" ]]; then
+					local clean_dom="${CUSTOM_DOMAIN#https://}"
+					clean_dom="${clean_dom#http://}"
+					echo "https://${clean_dom}" > /tmp/cloudflared_url
+				fi
+			else
+				$cf_bin tunnel --url http://127.0.0.1:7681 >/tmp/cloudflared.log 2>&1 &
+				for i in $(seq 1 12); do
+					sleep 0.5
+					local u
+					u=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | grep -v 'api\.trycloudflare' | head -n 1)
+					if [[ -n "$u" ]]; then
+						echo "$u" > /tmp/cloudflared_url
+						break
+					fi
+				done
+			fi
+		fi
+	}
+
+	stop_web_remote() {
+		touch /tmp/webremote_disabled 2>/dev/null || true
+		killall -9 cloudflared 2>/dev/null || true
+		pkill -9 cloudflared 2>/dev/null || true
+		killall -9 ttyd 2>/dev/null || true
+		pkill -9 ttyd 2>/dev/null || true
+		rm -f /tmp/cloudflared_url /tmp/cloudflared.log 2>/dev/null || true
+		sleep 0.3
+	}
+
+	config_custom_domain() {
+		while true; do
+			clear
+			load_config
+			local mode_desc="Quick Tunnel Gratis (Otomatis Cloudflare)"
+			[[ "$TUNNEL_MODE" == "custom" ]] && mode_desc="Domain Sendiri ($CUSTOM_DOMAIN)"
+
+			local menu_text="PENGATURAN DOMAIN KUSTOM & CLOUDFLARE TUNNEL:\n"
+			menu_text+="Mode Aktif Saat Ini : $mode_desc\n"
+			menu_text+="Domain Terpasang    : ${CUSTOM_DOMAIN:-Belum diatur}\n"
+			menu_text+="Status Token        : "
+			if [[ -n "$TUNNEL_TOKEN" ]]; then
+				menu_text+="Tersimpan (${#TUNNEL_TOKEN} karakter)\n\n"
+			else
+				menu_text+="Belum diisi\n\n"
+			fi
+			menu_text+="Pilih konfigurasi:"
+
+			local subchoice
+			subchoice=$($TUI_TOOL --title "MitraOS - Konfigurasi Domain Kustom" \
+				--menu "$menu_text" 20 78 4 \
+				"1" "Pasang Domain Sendiri & Token : Hubungkan domain kustom via Cloudflare Tunnel" \
+				"2" "Mode Quick Tunnel Gratis      : Gunakan terowongan otomatis tanpa akun (Default)" \
+				"3" "Petunjuk Setup Cloudflare     : Cara mendapatkan token & setting domain gratis" \
+				"0" "Kembali                       : Kembali ke Menu Asisten Remote" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $subchoice in
+				1)
+					local dom_in
+					dom_in=$($TUI_TOOL --title "Domain Kustom" --inputbox "Masukkan nama domain kustom Anda (misal: asisten.mitraos.com atau remote.domainanda.id):" 10 70 "$CUSTOM_DOMAIN" 3>&1 1>&2 2>&3)
+					[[ $? -ne 0 || -z "$dom_in" ]] && continue
+
+					local tok_in
+					tok_in=$($TUI_TOOL --title "Cloudflare Tunnel Token" --inputbox "Tempelkan (Paste) Token Cloudflare Tunnel Anda (dari dash.cloudflare.com):" 12 76 "$TUNNEL_TOKEN" 3>&1 1>&2 2>&3)
+					[[ $? -ne 0 || -z "$tok_in" ]] && continue
+
+					TUNNEL_MODE="custom"
+					CUSTOM_DOMAIN="$dom_in"
+					TUNNEL_TOKEN="$tok_in"
+					save_config
+
+					start_web_remote
+					G_WHIP_MSG "Sukses" "Domain kustom berhasil disimpan dan diaktifkan!\n\nAlamat Remote : https://${CUSTOM_DOMAIN#https://}\nMode          : Cloudflare Named Tunnel\n\nLayanan remote sekarang langsung terarah ke domain Anda." 13 72
+					;;
+				2)
+					TUNNEL_MODE="quick"
+					CUSTOM_DOMAIN=""
+					TUNNEL_TOKEN=""
+					save_config
+
+					start_web_remote
+					local q_url=$(get_web_url)
+					G_WHIP_MSG "Mode Otomatis" "MitraOS kembali menggunakan mode Quick Tunnel gratis.\n\nAlamat Baru : ${q_url:-Sedang menghubungkan...}\nLogin       : root / mitra" 11 65
+					;;
+				3)
+					local guide="CARA MENGHUBUNGKAN DOMAIN SENDIRI (CLOUDFLARE ZERO TRUST - GRATIS):\n\n"
+					guide+="1. Buka dashboard Cloudflare: https://dash.cloudflare.com\n"
+					guide+="2. Pastikan domain Anda sudah terdaftar di Cloudflare.\n"
+					guide+="3. Buka menu samping: 'Zero Trust' > 'Networks' > 'Tunnels'.\n"
+					guide+="4. Klik 'Create a Tunnel' > pilih 'Cloudflared' > klik 'Next'.\n"
+					guide+="5. Beri nama tunnel (misal: MitraOS) > klik 'Save Tunnel'.\n"
+					guide+="6. Pada bagian install, salin kode TOKEN (karakter panjang setelah kata '--token').\n"
+					guide+="7. Klik 'Next' untuk mengatur 'Public Hostname':\n"
+					guide+="   - Subdomain : asisten (atau remote)\n"
+					guide+="   - Domain    : pilih domain Anda (misal: domainanda.com)\n"
+					guide+="   - Service Type : HTTP\n"
+					guide+="   - URL       : 127.0.0.1:7681\n"
+					guide+="8. Klik 'Save hostname', lalu masukkan token & domain ke menu MitraOS ini!"
+					G_WHIP_MSG "Panduan Domain Cloudflare" "$guide" 22 76
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# Non-interactive CLI commands
+	if [[ -n "$1" ]]; then
+		case "${1,,}" in
+			start|on|enable)
+				echo -e "\n\033[1;36m[MitraOS]\033[0m Mengaktifkan Asisten Bantuan Remote (Web Remote & ttyd)..."
+				start_web_remote
+				echo -e "\033[1;33m[MitraOS]\033[0m Menghubungkan terowongan Cloudflare..."
+				for i in $(seq 1 12); do
+					sleep 1
+					url=$(get_web_url)
+					[[ -n "$url" ]] && break
+				done
+				echo -e "\033[1;32m[MitraOS]\033[0m Status: $(get_web_status)"
+				if [[ -n "$url" ]]; then
+					echo -e "\033[1;32m[MitraOS]\033[0m Alamat Web Remote : \033[1;37m$url\033[0m"
+					echo -e "\033[1;32m[MitraOS]\033[0m Port Lokal (ttyd)  : \033[1;37mhttp://$(get_ip):7681\033[0m"
+					echo -e "\033[1;32m[MitraOS]\033[0m Autentikasi        : \033[1;33mroot / mitra\033[0m"
+				else
+					echo -e "\033[1;33m[MitraOS]\033[0m Tunnel sedang terhubung di latar belakang. Periksa dengan 'mitra-asisten status' atau lihat layar banner."
+				fi
+				echo ""
+				exit 0
+				;;
+			stop|off|disable)
+				echo -e "\n\033[1;36m[MitraOS]\033[0m Menonaktifkan Asisten Bantuan Remote..."
+				stop_web_remote
+				echo -e "\033[1;32m[MitraOS]\033[0m Bantuan remote dinonaktifkan.\n"
+				exit 0
+				;;
+			status)
+				echo -e "\n\033[1;36m[MitraOS]\033[0m Status Bantuan Remote: \033[1;32m$(get_web_status)\033[0m"
+				url=$(get_web_url)
+				echo -e "Alamat Web Remote : \033[1;37m${url:-Belum aktif / menghubungkan...}\033[0m"
+				echo -e "Port Lokal (ttyd) : \033[1;37mhttp://$(get_ip):7681\033[0m"
+				echo -e "Autentikasi       : \033[1;33mroot / mitra\033[0m\n"
+				exit 0
+				;;
+		esac
+	fi
+
+	while true; do
+		clear
+		load_config
+		CURR_IP=$(get_ip)
+		WEB_STATUS=$(get_web_status)
+		WEB_URL=$(get_web_url)
+
+		local display_url="${WEB_URL:-Belum terbentuk / offline}"
+		local prompt_info="Citra Media Technology & Mitra Utama Group\n"
+		prompt_info+="Status Web Remote : [$WEB_STATUS]\n"
+		prompt_info+="Alamat Web Tunnel : $display_url\n"
+		prompt_info+="Default Login     : root\n"
+		prompt_info+="Default Password  : mitra\n\n"
+		prompt_info+="Pilih menu asisten remote:"
+
+		CHOICE=$($TUI_TOOL --title "MitraOS - Asisten Bantuan Remote (Web & SSH)" \
+			--menu "$prompt_info" 22 78 7 \
+			"1" "Lihat Alamat & Panduan Remote : Tampilkan instruksi lengkap bagi klien & teknisi" \
+			"2" "Jalankan / Buat Alamat Baru   : Mulai ulang terowongan dan aktifkan Web Remote" \
+			"3" "Hentikan Bantuan Remote Web   : Matikan akses dan sembunyikan dari banner" \
+			"4" "Pengaturan Domain Sendiri     : Pasang domain kustom & Cloudflare Tunnel Token" \
+			"5" "Pengaturan SSH Server (Lokal) : Kelola port 22 & koneksi PuTTY / Terminal" \
+			"6" "Ubah Password Akses Remote    : Ganti kata sandi login root & user mitra" \
+			"0" "Kembali                       : Kembali ke Menu Sebelumnya" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1)
+				WEB_URL=$(get_web_url)
+				GUIDE="PANDUAN ASISTEN BANTUAN REMOTE MITRAOS:\n\n"
+				GUIDE+="1. Menggunakan Web Browser (Dari HP / Laptop / PC):\n"
+				GUIDE+="   Klien cukup mengirimkan link berikut ke teknisi:\n"
+				GUIDE+="   Alamat : ${WEB_URL:-Sedang menghubungkan...}\n"
+				GUIDE+="   Login  : root\n"
+				GUIDE+="   Sandi  : mitra\n\n"
+				GUIDE+="   * Dapat diakses dari mana saja tanpa IP publik (tethering HP OK).\n"
+				GUIDE+="   * Mendukung tombol panah, enter, dan menu TUI interaktif.\n\n"
+				GUIDE+="2. Menggunakan Jaringan Lokal (SSH / Wi-Fi Rumah):\n"
+				GUIDE+="   ssh root@$CURR_IP\n"
+				GUIDE+="   Password: mitra\n"
+				G_WHIP_MSG "Informasi & Panduan Remote" "$GUIDE" 22 74
+				;;
+			2)
+				start_web_remote
+				NEW_URL=$(get_web_url)
+				G_WHIP_MSG "Web Remote Aktif" "Layanan Web Remote telah aktif kembali!\n\nAlamat Publik : ${NEW_URL:-Menghubungkan...}\nLogin Akun    : root\nPassword      : mitra\n\nAlamat kini kembali ditampilkan pada layar banner." 13 72
+				;;
+			3)
+				stop_web_remote
+				G_WHIP_MSG "Web Remote Dinonaktifkan" "Layanan Web Remote telah berhasil dimatikan.\n\nAkses browser publik ditutup dan baris Web Remote\ntelah disembunyikan dari layar banner MitraOS." 10 65
+				;;
+			4)
+				config_custom_domain
+				;;
+			5)
+				if [[ -x '/boot/apollo/mitra-ssh' ]]; then
+					/boot/apollo/mitra-ssh
+				else
+					G_WHIP_MSG "Pemberitahuan" "mitra-ssh belum tersedia."
+				fi
+				;;
+			6)
+				NEWPASS=$($TUI_TOOL --title "Ganti Password" --passwordbox "Masukkan password baru untuk akses remote (root & mitra):" 10 55 3>&1 1>&2 2>&3)
+				if [[ -n "$NEWPASS" ]]; then
+					echo "root:${NEWPASS}" | chpasswd 2>/dev/null || true
+					echo "mitra:${NEWPASS}" | chpasswd 2>/dev/null || true
+					G_WHIP_MSG "Berhasil" "Password akun root & mitra berhasil diperbarui." 8 50
+				fi
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

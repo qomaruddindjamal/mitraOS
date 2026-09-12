@@ -1,0 +1,293 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# MitraOS V.1 (Apollo) - Pusat Aplikasi Terpasang (Installed Applications)
+	# Location: /boot/apollo/mitra-apps
+	# Founder: Qomaruddin Djamal
+	# Company: Citra Media Technology & Mitra Utama Group
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='MitraOS - Aplikasi Terpasang'
+	G_CHECK_ROOT_USER "$@"
+
+	# Helper: Scan and detect ONLY actually installed applications
+	scan_installed_applications()
+	{
+		INSTALLED_NAMES=()
+		INSTALLED_DESCS=()
+		INSTALLED_CMDS=()
+
+		# 1. Antigravity AI
+		if [[ -f /boot/apollo/mitra-antigravity || -x /boot/apollo/mitra-antigravity || -f /usr/local/bin/agy || -x /usr/local/bin/agy || -f /bin/mitra-antigravity ]]; then
+			INSTALLED_NAMES+=("Antigravity")
+			INSTALLED_DESCS+=("Asisten AI Mandiri, Coding Agent & IDE")
+			INSTALLED_CMDS+=("/boot/apollo/mitra-antigravity")
+		fi
+
+		# 2. Microsoft Office 365
+		if [[ -f /boot/apollo/mitra-office365 || -x /boot/apollo/mitra-office365 || -f /usr/local/bin/office365 || -x /usr/local/bin/office365 || -f /bin/mitra-office365 ]]; then
+			INSTALLED_NAMES+=("Microsoft Office 365")
+			INSTALLED_DESCS+=("Suite Dokumen Cloud (Word, Excel, PowerPoint)")
+			INSTALLED_CMDS+=("/boot/apollo/mitra-office365")
+		fi
+
+		# 3. VLC Media Player
+		if command -v vlc >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("VLC Media Player")
+			INSTALLED_DESCS+=("Pemutar Audio & Video Universal (VideoLAN)")
+			INSTALLED_CMDS+=("vlc")
+		fi
+
+		# 4. Mozilla Firefox
+		if command -v firefox >/dev/null 2>&1 || command -v firefox-esr >/dev/null 2>&1; then
+			local fx_bin="firefox"
+			command -v firefox >/dev/null 2>&1 || fx_bin="firefox-esr"
+			INSTALLED_NAMES+=("Mozilla Firefox")
+			INSTALLED_DESCS+=("Peramban Web Cepat & Pribadi (Mozilla)")
+			INSTALLED_CMDS+=("$fx_bin")
+		fi
+
+		# 5. Chromium Web Browser
+		if command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1; then
+			local cr_bin="chromium"
+			command -v chromium >/dev/null 2>&1 || cr_bin="chromium-browser"
+			INSTALLED_NAMES+=("Chromium Web Browser")
+			INSTALLED_DESCS+=("Peramban Web Open-Source (Chromium)")
+			INSTALLED_CMDS+=("$cr_bin")
+		fi
+
+		# 6. LibreOffice Suite
+		if command -v libreoffice >/dev/null 2>&1 || command -v soffice >/dev/null 2>&1; then
+			local lo_bin="libreoffice"
+			command -v libreoffice >/dev/null 2>&1 || lo_bin="soffice"
+			INSTALLED_NAMES+=("LibreOffice Suite")
+			INSTALLED_DESCS+=("Pengolah Dokumen, Tabel & Presentasi Offline")
+			INSTALLED_CMDS+=("$lo_bin")
+		fi
+
+		# 7. GIMP Image Editor
+		if command -v gimp >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("GIMP Image Editor")
+			INSTALLED_DESCS+=("Penyunting Gambar & Foto GNU")
+			INSTALLED_CMDS+=("gimp")
+		fi
+
+		# 8. Audacity Audio Editor
+		if command -v audacity >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Audacity Audio Editor")
+			INSTALLED_DESCS+=("Perekam & Penyunting Audio Multi-Track")
+			INSTALLED_CMDS+=("audacity")
+		fi
+
+		# 9. MPV Media Player
+		if command -v mpv >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("MPV Media Player")
+			INSTALLED_DESCS+=("Pemutar Video Minimalis & Efisien")
+			INSTALLED_CMDS+=("mpv")
+		fi
+
+		# 10. Audacious Audio Player
+		if command -v audacious >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Audacious Audio Player")
+			INSTALLED_DESCS+=("Pemutar Musik Ringan Hemat Memori")
+			INSTALLED_CMDS+=("audacious")
+		fi
+
+		# 11. Nginx Web Server
+		if command -v nginx >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Nginx Web Server")
+			INSTALLED_DESCS+=("Server Web & Reverse Proxy (Nginx Inc.)")
+			INSTALLED_CMDS+=("systemctl status nginx --no-pager || nginx -v")
+		fi
+
+		# 12. Apache HTTP Server
+		if command -v apache2 >/dev/null 2>&1 || command -v httpd >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Apache HTTP Server")
+			INSTALLED_DESCS+=("Server Web Modular (Apache Foundation)")
+			INSTALLED_CMDS+=("systemctl status apache2 --no-pager || apache2 -v")
+		fi
+
+		# 13. MariaDB Database Server
+		if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("MariaDB Database")
+			INSTALLED_DESCS+=("Basis Data Relasional SQL (MariaDB)")
+			INSTALLED_CMDS+=("systemctl status mariadb --no-pager || mysql --version")
+		fi
+
+		# 14. Postfix Mail Server
+		if command -v postfix >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Postfix Mail Server")
+			INSTALLED_DESCS+=("Mail Transfer Agent Handal (Postfix)")
+			INSTALLED_CMDS+=("postfix status")
+		fi
+
+		# 15. Wine Compatibility Layer
+		if command -v wine >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Wine Compatibility Layer")
+			INSTALLED_DESCS+=("Eksekusi Aplikasi Windows .exe (WineHQ)")
+			INSTALLED_CMDS+=("wine --version")
+		fi
+
+		# 16. Python 3 Runtime
+		if command -v python3 >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Python 3 Runtime")
+			INSTALLED_DESCS+=("Penerjemah Bahasa Python (Python Foundation)")
+			INSTALLED_CMDS+=("python3 --version")
+		fi
+
+		# 17. Git Version Control
+		if command -v git >/dev/null 2>&1; then
+			INSTALLED_NAMES+=("Git Version Control")
+			INSTALLED_DESCS+=("Sistem Pelacak Versi Kode Terdistribusi")
+			INSTALLED_CMDS+=("git --version")
+		fi
+
+		# 18. GNU nano Text Editor
+		if command -v nano >/dev/null 2>&1 || [[ -f /bin/nano || -f /usr/bin/nano ]]; then
+			INSTALLED_NAMES+=("GNU nano")
+			INSTALLED_DESCS+=("Penyunting Teks Konsol Cepat & Ramah Pemula")
+			INSTALLED_CMDS+=("nano")
+		fi
+
+		# 19. Htop Process Monitor
+		if command -v htop >/dev/null 2>&1 || [[ -f /bin/htop || -f /usr/bin/htop ]]; then
+			INSTALLED_NAMES+=("Htop Monitor")
+			INSTALLED_DESCS+=("Pemantau Beban CPU & Memori Interaktif")
+			INSTALLED_CMDS+=("htop")
+		fi
+
+		# 20. GNU Parted
+		if command -v parted >/dev/null 2>&1 || [[ -f /bin/parted || -f /usr/bin/parted || -f /sbin/parted ]]; then
+			INSTALLED_NAMES+=("GNU Parted")
+			INSTALLED_DESCS+=("Utilitas Partisi & Manajemen Sistem Berkas")
+			INSTALLED_CMDS+=("parted -l")
+		fi
+
+		# Dynamically scan /usr/share/applications/*.desktop for any newly apt-installed GUI applications
+		if [[ -d /usr/share/applications ]]; then
+			for desktop in /usr/share/applications/*.desktop; do
+				[[ -f "$desktop" ]] || continue
+				local dname dcmd
+				dname=$(grep -m1 '^Name=' "$desktop" | cut -d= -f2-)
+				dcmd=$(grep -m1 '^Exec=' "$desktop" | cut -d= -f2- | awk '{print $1}')
+				[[ -z "$dname" || -z "$dcmd" ]] && continue
+				case "$dcmd" in
+					*mitra*|*apollo*|*debian*|*display*|*system*|*settings*) continue ;;
+				esac
+				if command -v "$dcmd" >/dev/null 2>&1; then
+					local duplicate=0
+					for existing in "${INSTALLED_NAMES[@]}"; do
+						[[ "$existing" == "$dname"* || "$dname" == "$existing"* ]] && duplicate=1 && break
+					done
+					if (( duplicate == 0 )); then
+						local ddesc
+						ddesc=$(grep -m1 '^Comment=' "$desktop" | cut -d= -f2-)
+						[[ -z "$ddesc" ]] && ddesc="Aplikasi Desktop Terpasang"
+						INSTALLED_NAMES+=("$dname")
+						INSTALLED_DESCS+=("$ddesc")
+						INSTALLED_CMDS+=("$dcmd")
+					fi
+				fi
+			done
+		fi
+	}
+
+	# Interactive Main Menu
+	main_menu()
+	{
+		while true; do
+			clear
+			scan_installed_applications
+
+			local menu_entries=()
+			local total_apps=${#INSTALLED_NAMES[@]}
+
+			if (( total_apps == 0 )); then
+				menu_entries+=(
+					"0" "Kembali                   : Kembali ke Menu Utama"
+				)
+				prompt_msg="Belum ada aplikasi tambahan terpasang. Pasang aplikasi melalui mitra-software."
+			else
+				prompt_msg="Ditemukan $total_apps aplikasi aktif terpasang di sistem. Pilih untuk menjalankan:"
+				for (( idx=0; idx<total_apps; idx++ )); do
+					local app_num=$(( idx + 1 ))
+					local app_name="${INSTALLED_NAMES[idx]}"
+					local app_desc="${INSTALLED_DESCS[idx]}"
+					local item_label
+					item_label=$(printf "%-26s : %s" "$app_name" "$app_desc")
+					menu_entries+=("$app_num" "$item_label")
+				done
+				menu_entries+=(
+					"0" "Kembali                   : Kembali ke Menu Utama"
+				)
+			fi
+
+			local height=$(( total_apps + 11 ))
+			(( height < 15 )) && height=15
+			(( height > 24 )) && height=24
+
+			CHOICE=$($TUI_TOOL --title "MitraOS - Pusat Aplikasi Terpasang (mitra-apps)" \
+				--menu "Citra Media Technology & Mitra Utama Group\n$prompt_msg" "$height" 78 "$(( total_apps + 1 ))" \
+				"${menu_entries[@]}" 3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			if [[ "$CHOICE" == "0" || -z "$CHOICE" ]]; then
+				break
+			fi
+
+			if [[ "$CHOICE" =~ ^[0-9]+$ ]] && (( CHOICE >= 1 && CHOICE <= total_apps )); then
+				local selected_idx=$(( CHOICE - 1 ))
+				local exec_cmd="${INSTALLED_CMDS[selected_idx]}"
+				local app_title="${INSTALLED_NAMES[selected_idx]}"
+
+				clear
+				echo -e "${C_CYAN_BOLD}Menjalankan $app_title...${C_RESET}"
+				eval "$exec_cmd"
+				local ret_code=$?
+				if (( ret_code != 0 )); then
+					echo ""
+					read -r -p "Aplikasi selesai dengan kode $ret_code. Tekan Enter untuk kembali..."
+				fi
+			else
+				G_WHIP_MSG "Pemberitahuan" "Pilihan tidak valid: $CHOICE"
+			fi
+		done
+
+		G_EXIT_BANNER
+	}
+
+	main_menu "$@"
+}

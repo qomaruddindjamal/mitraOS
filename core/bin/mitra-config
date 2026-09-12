@@ -1,0 +1,324 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - System & Hardware Configuration Utility
+	#//////////////////////////////////////////////////////////////////
+
+	# Load Globals
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Config'
+	G_CHECK_ROOT_USER "$@"
+
+	config_networking()
+	{
+		while true; do
+			local net_choice
+			net_choice=$($TUI_TOOL --title "Apollo OS - Network Configuration" \
+				--menu "Configure network interfaces and host identification:" 15 70 5 \
+				"1" "Change Hostname         : Current: $(hostname)" \
+				"2" "DNS Nameservers         : Configure system DNS (Cloudflare, Google, custom)" \
+				"3" "Ethernet Configuration  : Configure Static IP or DHCP" \
+				"4" "WiFi Setup              : Scan and connect to wireless networks" \
+				"0" "Kembali                 : Kembali ke Menu Sebelumnya" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $net_choice in
+				1)
+					local new_host
+					new_host=$($TUI_TOOL --title "Change Hostname" --inputbox "Enter new system hostname:" 10 50 "$(hostname)" 3>&1 1>&2 2>&3)
+					if [[ -n $new_host && $new_host != "$(hostname)" ]]; then
+						hostnamectl set-hostname "$new_host"
+						sed -i "s/127.0.1.1.*/127.0.1.1\t$new_host/" /etc/hosts 2>/dev/null
+						G_WHIP_MSG "Success" "Hostname updated to: $new_host"
+					fi
+					;;
+				2)
+					local dns_choice
+					dns_choice=$($TUI_TOOL --title "DNS Configuration" \
+						--menu "Select DNS provider:" 14 60 4 \
+						"1" "Cloudflare (1.1.1.1, 1.0.0.1) - Fast & Privacy focused" \
+						"2" "Google (8.8.8.8, 8.8.4.4)" \
+						"3" "Quad9 (9.9.9.9) - Malware blocking" \
+						"4" "Custom DNS" \
+						3>&1 1>&2 2>&3)
+					case $dns_choice in
+						1) echo -e "nameserver 1.1.1.1\nnameserver 1.0.0.1" > /etc/resolv.conf; G_WHIP_MSG "DNS" "Cloudflare DNS applied.";;
+						2) echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf; G_WHIP_MSG "DNS" "Google DNS applied.";;
+						3) echo -e "nameserver 9.9.9.9\nnameserver 149.112.112.112" > /etc/resolv.conf; G_WHIP_MSG "DNS" "Quad9 DNS applied.";;
+						4)
+							local custom_dns
+							custom_dns=$($TUI_TOOL --title "Custom DNS" --inputbox "Enter DNS IP addresses separated by space:" 10 60 "1.1.1.1 8.8.8.8" 3>&1 1>&2 2>&3)
+							if [[ -n $custom_dns ]]; then
+								> /etc/resolv.conf
+								for ip in $custom_dns; do
+									echo "nameserver $ip" >> /etc/resolv.conf
+								done
+								G_WHIP_MSG "DNS" "Custom DNS applied."
+							fi
+							;;
+					esac
+					;;
+				3)
+					G_WHIP_MSG "Ethernet" "Ethernet is managed via /etc/network/interfaces or NetworkManager.\nPrimary IP: $(hostname -I | awk '{print $1}')"
+					;;
+				4)
+					if command -v nmcli >/dev/null 2>&1; then
+						nmcli device wifi rescan 2>/dev/null
+						local wifi_list
+						wifi_list=$(nmcli -f SSID,SIGNAL,SECURITY device wifi list | head -n 15)
+						G_WHIP_MSG "WiFi Networks" "$wifi_list"
+					else
+						G_WHIP_MSG "WiFi" "Wireless tools (wpasupplicant / NetworkManager) can be installed via mitra-software."
+					fi
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	config_performance()
+	{
+		while true; do
+			local current_gov="powersave"
+			[[ -f '/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor' ]] && current_gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)
+			local perf_choice
+			perf_choice=$($TUI_TOOL --title "Apollo OS - Performance & CPU Governor" \
+				--menu "Current CPU Governor: $current_gov\nSelect performance profile:" 14 65 4 \
+				"1" "Performance    : Always run CPU at maximum clock speed" \
+				"2" "Schedutil      : Dynamic kernel scheduler controlled scaling" \
+				"3" "Ondemand       : Dynamic scaling based on system load" \
+				"4" "Powersave      : Force lowest clock speed to minimize heat/power" \
+				"0" "Back" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			local target_gov=""
+			case $perf_choice in
+				1) target_gov="performance" ;;
+				2) target_gov="schedutil" ;;
+				3) target_gov="ondemand" ;;
+				4) target_gov="powersave" ;;
+				0|"") break ;;
+			esac
+
+			if [[ -n $target_gov ]]; then
+				for gov_file in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+					[[ -w $gov_file ]] && echo "$target_gov" > "$gov_file" 2>/dev/null
+				done
+				G_WHIP_MSG "Governor Updated" "CPU scaling governor set to: $target_gov"
+			fi
+		done
+	}
+
+	config_security()
+	{
+		while true; do
+			local sec_choice
+			sec_choice=$($TUI_TOOL --title "Apollo OS - Security & Remote Access" \
+				--menu "Configure SSH, credentials, and firewall:" 14 65 4 \
+				"1" "Change Root Password" \
+				"2" "Change Apollo User Password" \
+				"3" "SSH Service Status & Toggle" \
+				"4" "Configure UFW Firewall" \
+				"0" "Back" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $sec_choice in
+				1)
+					passwd root
+					G_WHIP_MSG "Password" "Root password updated."
+					;;
+				2)
+					if id -u mitra >/dev/null 2>&1; then
+						passwd mitra
+						G_WHIP_MSG "Password" "Mitra user password updated."
+					else
+						G_WHIP_MSG "User" "User 'mitra' does not exist yet."
+					fi
+					;;
+				3)
+					local ssh_stat="inactive"
+					systemctl is-active ssh >/dev/null 2>&1 && ssh_stat="active"
+					if G_WHIP_YESNO "SSH Server" "SSH server is currently $ssh_stat.\nDo you want to toggle its status?"; then
+						if [[ $ssh_stat == "active" ]]; then
+							systemctl stop ssh && systemctl disable ssh
+							G_WHIP_MSG "SSH" "SSH service stopped and disabled."
+						else
+							systemctl enable ssh && systemctl start ssh
+							G_WHIP_MSG "SSH" "SSH service enabled and started."
+						fi
+					fi
+					;;
+				4)
+					if command -v ufw >/dev/null 2>&1; then
+						local ufw_status
+						ufw_status=$(ufw status verbose)
+						G_WHIP_MSG "UFW Status" "$ufw_status"
+					else
+						if G_WHIP_YESNO "UFW Firewall" "UFW firewall is not installed. Install now?"; then
+							G_AGI ufw
+							ufw default deny incoming
+							ufw default allow outgoing
+							ufw allow 22/tcp
+							ufw --force enable
+							G_WHIP_MSG "UFW" "UFW installed and configured with SSH (port 22) allowed."
+						fi
+					fi
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	config_localization()
+	{
+		while true; do
+			local loc_choice
+			loc_choice=$($TUI_TOOL --title "Apollo OS - Localization" \
+				--menu "Configure system locale, timezone, and keyboard:" 13 60 4 \
+				"1" "Configure Timezone (dpkg-reconfigure tzdata)" \
+				"2" "Configure Locales (dpkg-reconfigure locales)" \
+				"3" "Configure Keyboard (dpkg-reconfigure keyboard-configuration)" \
+				"0" "Back" \
+				3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $loc_choice in
+				1) dpkg-reconfigure tzdata ;;
+				2) dpkg-reconfigure locales ;;
+				3) dpkg-reconfigure keyboard-configuration ;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	config_hardware_and_memory()
+	{
+		while true; do
+			local zram_state="Disabled"
+			grep -q 'zram' /proc/swaps 2>/dev/null && zram_state="Active (LZ4)"
+			local swappiness="60"
+			[[ -f /proc/sys/vm/swappiness ]] && swappiness=$(cat /proc/sys/vm/swappiness)
+
+			local hw_choice
+			hw_choice=$($TUI_TOOL --title "Apollo OS - Hardware & Low-Spec Optimization" \
+				--menu "Hardware: $G_HW_MODEL_NAME\nZRAM Status: $zram_state | Swappiness: $swappiness\n\nSelect optimization:" 17 72 5 \
+				"1" "Toggle Compressed ZRAM Swap : Auto-boost RAM for low-spec (Pentium 4 / <=1GB)" \
+				"2" "Tune VM Swappiness          : Set aggressive swap to RAM (100) or disk (60)" \
+				"3" "Clean Memory & Drop Caches  : Instantly free RAM buffers & cached memory" \
+				"4" "Storage Diet (No-Doc & Cache): Check and apply minimal storage rules" \
+				"0" "Back" 3>&1 1>&2 2>&3)
+			(( $? != 0 )) && break
+
+			case $hw_choice in
+				1)
+					if grep -q 'zram' /proc/swaps 2>/dev/null; then
+						systemctl stop mitra-zram.service 2>/dev/null || swapoff /dev/zram0 2>/dev/null || true
+						G_WHIP_MSG "ZRAM" "ZRAM swap deactivated."
+					else
+						systemctl start mitra-zram.service 2>/dev/null || {
+							modprobe zram 2>/dev/null || true
+							echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+							tot_m=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+							echo $(( tot_m * 1024 )) > /sys/block/zram0/disksize 2>/dev/null || true
+							mkswap /dev/zram0 >/dev/null 2>&1
+							swapon -p 32767 /dev/zram0
+						}
+						systemctl enable mitra-zram.service 2>/dev/null || true
+						G_WHIP_MSG "ZRAM" "ZRAM compressed swap enabled!\nRAM capacity effectively doubled without disk wear."
+					fi
+					;;
+				2)
+					local new_sw
+					new_sw=$($TUI_TOOL --title "Swappiness" --inputbox "Enter swappiness value (100 = aggressive ZRAM swap, 10 = minimal):" 10 50 "100" 3>&1 1>&2 2>&3)
+					if [[ -n $new_sw ]]; then
+						sysctl -w vm.swappiness="$new_sw"
+						echo "vm.swappiness = $new_sw" > /etc/sysctl.d/99-mitra-swappiness.conf
+						G_WHIP_MSG "Success" "Swappiness set to $new_sw."
+					fi
+					;;
+				3)
+					sync
+					echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+					local free_m
+					free_m=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)
+					G_WHIP_MSG "RAM Cleared" "Caches dropped. Available RAM is now: ${free_m}MB."
+					;;
+				4)
+					local nodoc_status="Not active"
+					[[ -f /etc/dpkg/dpkg.cfg.d/01_nodoc ]] && nodoc_status="Active (Docs stripped from APT)"
+					G_WHIP_MSG "Storage Diet" "Status: $nodoc_status\n\nMitraOS blocks installation of unneeded man pages, docs, and groff files, saving ~200-400MB storage."
+					;;
+				0|"") break ;;
+			esac
+		done
+	}
+
+	# Main Config Loop
+	while true; do
+		clear
+		CHOICE=$($TUI_TOOL --title "MitraOS - System Configuration (mitra-config)" \
+			--menu "Hardware: $G_HW_MODEL_NAME ($G_HW_ARCH_DESC)\nPilih kategori pengaturan sistem:" 17 76 7 \
+			"1" "Networking                  : Hostname, DNS, Interfaces, WiFi" \
+			"2" "Performance                 : CPU Governor, Frequency Scaling" \
+			"3" "Hardware & RAM              : ZRAM Swap, Low-Spec Tuning, Storage Diet" \
+			"4" "Security                    : Passwords, SSH Server, Firewall" \
+			"5" "Localization                : Timezone, Locale, Keyboard Layout" \
+			"6" "Audio Settings              : Sound Card Detection & Volume" \
+			"0" "Kembali                     : Kembali ke Menu Utama" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1) config_networking ;;
+			2) config_performance ;;
+			3) config_hardware_and_memory ;;
+			4) config_security ;;
+			5) config_localization ;;
+			6)
+				if command -v alsamixer >/dev/null 2>&1; then
+					alsamixer
+				else
+					G_WHIP_MSG "Audio" "ALSA sound utilities can be installed via mitra-software."
+				fi
+				;;
+			0|"") break ;;
+			*) break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}

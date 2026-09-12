@@ -1,0 +1,87 @@
+#!/bin/bash
+{
+	#//////////////////////////////////////////////////////////////////
+	# Apollo OS - Storage & Drive Manager
+	#//////////////////////////////////////////////////////////////////
+
+	_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	# Load Globals with broad discovery
+	for _g in \
+		"$_DIR/../lib/mitra-globals" \
+		"$_DIR/mitra-globals" \
+		"$_DIR/func/mitra-globals" \
+		"$_DIR/func/apollo-globals" \
+		"/boot/apollo/func/mitra-globals" \
+		"/boot/apollo/func/apollo-globals" \
+		"/boot/apollo/mitra-globals" \
+		"/boot/mitraos/func/mitra-globals" \
+		"/opt/mitraos/lib/mitra-globals" \
+		"/cdrom/mitraos/lib/mitra-globals" \
+		"/cdrom/apollo/func/apollo-globals" \
+		"/cdrom/apollo/tools/mitra-globals" \
+		"/bin/mitra-globals" \
+		"/usr/bin/mitra-globals"; do
+		if [[ -f "$_g" ]]; then
+			. "$_g" 2>/dev/null || true
+			break
+		fi
+	done
+
+	if ! declare -F G_CHECK_ROOT_USER >/dev/null 2>&1; then
+		G_CHECK_ROOT_USER() { :; }
+	fi
+	if ! declare -F G_WHIP_MSG >/dev/null 2>&1; then
+		G_WHIP_MSG() { whiptail --title "$1" --msgbox "$2" "${3:-10}" "${4:-60}" 2>/dev/null || echo -e "
+[$1] $2
+"; }
+	fi
+
+	G_PROGRAM_NAME='Apollo OS - Drive Manager'
+	G_CHECK_ROOT_USER "$@"
+
+	while true; do
+		disk_overview=$(lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT | grep -v 'loop')
+		CHOICE=$($TUI_TOOL --title "Apollo OS - Drive Manager" \
+			--menu "Current Disk Partitions:\n$disk_overview\n\nSelect operation:" 18 75 5 \
+			"1" "View Detailed Disk Usage (df -h)" \
+			"2" "Mount External Drive / USB" \
+			"3" "Unmount Drive" \
+			"4" "Format Partition (ext4 / btrfs / vfat)" \
+			"0" "Back" \
+			3>&1 1>&2 2>&3)
+		(( $? != 0 )) && break
+
+		case $CHOICE in
+			1)
+				usage=$(df -h -x tmpfs -x devtmpfs)
+				G_WHIP_MSG "Disk Usage" "$usage" 16 75
+				;;
+			2)
+				part=$($TUI_TOOL --title "Mount Drive" --inputbox "Enter partition (e.g., /dev/sdb1):" 10 50 3>&1 1>&2 2>&3)
+				if [[ -b $part ]]; then
+					target=$($TUI_TOOL --title "Mount Point" --inputbox "Enter mount directory (e.g., /mnt/usb):" 10 50 "/mnt/usb" 3>&1 1>&2 2>&3)
+					mkdir -p "$target"
+					mount "$part" "$target" && G_WHIP_MSG "Success" "Mounted $part to $target" || G_WHIP_MSG "Error" "Failed to mount $part"
+				fi
+				;;
+			3)
+				mount_point=$($TUI_TOOL --title "Unmount Drive" --inputbox "Enter mount path to unmount:" 10 50 "/mnt/usb" 3>&1 1>&2 2>&3)
+				if [[ -n $mount_point ]]; then
+					umount "$mount_point" && G_WHIP_MSG "Success" "Unmounted $mount_point" || G_WHIP_MSG "Error" "Failed to unmount $mount_point"
+				fi
+				;;
+			4)
+				part_fmt=$($TUI_TOOL --title "Format Partition" --inputbox "WARNING: All data will be erased!\nEnter partition to format (e.g. /dev/sdb1):" 10 60 3>&1 1>&2 2>&3)
+				if [[ -b $part_fmt ]]; then
+					if G_WHIP_YESNO "Confirm Format" "Are you sure you want to format $part_fmt as ext4?"; then
+						umount "$part_fmt" 2>/dev/null
+						mkfs.ext4 -F "$part_fmt" && G_WHIP_MSG "Success" "Formatted $part_fmt as ext4" || G_WHIP_MSG "Error" "Formatting failed"
+					fi
+				fi
+				;;
+			0|"") break ;;
+		esac
+	done
+
+	G_EXIT_BANNER
+}
