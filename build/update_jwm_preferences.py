@@ -9,21 +9,15 @@ files = [
 
 for fpath in files:
     raw = fpath.read_bytes()
-    # 1. Replace dock button
+    # 1. Dock button: direct execution of dispatcher (launches native GUI without terminal)
     raw = raw.replace(
-        b'popup="System Preferences">exec:/usr/bin/mitra-preferences</TrayButton>',
-        b'popup="System Preferences">exec:/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</TrayButton>'
+        b'popup="System Preferences">exec:/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</TrayButton>',
+        b'popup="System Preferences">exec:/usr/bin/mitra-preferences</TrayButton>'
     )
-    # 2. Replace menu items
+    # 2. Menu items: direct execution of dispatcher
     raw = raw.replace(
-        b'label="System Preferences">/usr/bin/mitra-preferences</Program>',
-        b'label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>'
+        b'label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>',
+        b'label="System Preferences">/usr/bin/mitra-preferences</Program>'
     )
-    # 3. Add to Menu b (Workstation) if not present
-    if b'label="System Preferences"' not in raw.split(b'<RootMenu onroot="b">')[1].split(b'</RootMenu>')[0]:
-        target = b'<Program label="Control Center">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>'
-        replacement = target + b'\r\n        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>' if b'\r\n' in raw else target + b'\n        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>'
-        raw = raw.replace(target, replacement, 1)
-
     fpath.write_bytes(raw)
-    print(f"Successfully patched {fpath}")
+    print(f"[+] Updated {fpath} to call /usr/bin/mitra-preferences directly")

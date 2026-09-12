@@ -75,7 +75,7 @@
         <Spacer width="10"/>
         <TrayButton icon="/usr/share/mitraos/workstation_dock.png" popup="Workstation">exec:/usr/bin/mitra-terminal</TrayButton>
         <Spacer width="10"/>
-        <TrayButton icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" popup="System Preferences">exec:/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</TrayButton>
+        <TrayButton icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" popup="System Preferences">exec:/usr/bin/mitra-preferences</TrayButton>
         <Spacer width="8"/>
         <TrayButton icon="/usr/share/mitraos/control_center.png" popup="Control Center">exec:/usr/bin/mitra-terminal -e /boot/apollo/mitra</TrayButton>
         <Spacer width="10"/>
@@ -112,7 +112,7 @@
         <Program label="File Manager (mc)">/usr/bin/mitra-terminal -e mc</Program>
         <Separator/>
         <Program label="Multi-OS App Hub">/usr/bin/mitra-terminal -e /boot/apollo/mitra-apps</Program>
-        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>
+        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-preferences</Program>
         <Separator/>
         <Restart label="Refresh Desktop"/>
     </RootMenu>
@@ -121,7 +121,7 @@
     <RootMenu onroot="a">
         <Program label="About mitraOS">/usr/bin/mitra-terminal -e /bin/mitra-banner</Program>
         <Program label="System Information">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>
-        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>
+        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-preferences</Program>
         <Separator/>
         <Program label="Restart">/bin/shutdown -r</Program>
         <Program label="Shutdown">/bin/shutdown</Program>
@@ -130,7 +130,7 @@
     <!-- MENU b: WORKSTATION -->
     <RootMenu onroot="b">
         <Program label="Control Center">/usr/bin/mitra-terminal -e /boot/apollo/mitra</Program>
-        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-terminal -e /usr/bin/mitra-preferences</Program>
+        <Program icon="/usr/share/mitraos/icons/system-preferences/preferences-system.png" label="System Preferences">/usr/bin/mitra-preferences</Program>
         <Separator/>
         <Program label="Activity Monitor (top)">/usr/bin/mitra-terminal -e top</Program>
         <Program label="Storage &amp; Disks (df)">/usr/bin/mitra-terminal -e df -h</Program>
