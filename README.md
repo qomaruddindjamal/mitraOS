@@ -1,4 +1,4 @@
-# MitraOS V.1 (Apollo Edition)
+# MitraOS V.1 (Apollo)
 
 > **Sistem Operasi Multi-Perangkat Modern, Efisien & Ringan Berbasis Linux**  
 > **Founder**: Qomaruddin Djamal  
