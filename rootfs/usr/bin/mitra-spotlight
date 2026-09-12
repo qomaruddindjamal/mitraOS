@@ -8,8 +8,8 @@ if [ $? -eq 0 ] && [ -n "$CMD" ]; then
         "apps"|"software")
             DISPLAY=:0 /usr/bin/mitra-terminal -e /boot/apollo/mitra-apps &
             ;;
-        "config"|"settings")
-            DISPLAY=:0 /usr/bin/mitra-terminal -e /boot/apollo/mitra-config &
+        "config"|"settings"|"pref"|"preferences")
+            DISPLAY=:0 /usr/bin/mitra-preferences &
             ;;
         "top"|"monitor")
             DISPLAY=:0 /usr/bin/mitra-terminal -e top &
