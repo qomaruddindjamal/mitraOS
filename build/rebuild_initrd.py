@@ -285,9 +285,9 @@ mountroot()
 	cat << 'EOF_XINIT' > "${rootmnt}/etc/X11/xinit/xinitrc"
 #!/bin/sh
 xsetroot -solid '#0a0e17' 2>/dev/null &
+xset s off -dpms 2>/dev/null &
 (sleep 0.5; feh --bg-fill /usr/share/mitraos/wallpaper.jpg 2>/dev/null || feh --bg-fill /usr/share/backgrounds/mitra-wallpaper.jpg 2>/dev/null) &
 /usr/bin/mitra-dock-daemon &
-/usr/bin/mitra-terminal &
 while true; do
     jwm
     sleep 1
