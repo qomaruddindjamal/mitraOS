@@ -70,17 +70,6 @@ def prepare_staging(staging_dir, config):
     shutil.copytree(REPO_ROOT / "core" / "lib", mitra_dest / "lib", dirs_exist_ok=True)
     shutil.copytree(REPO_ROOT / "core" / "modules", mitra_dest / "modules", dirs_exist_ok=True)
 
-    # Place VHD rootfs.img into staging
-    vhd_rootfs = REPO_ROOT / "build" / "rootfs.ext4"
-    if vhd_rootfs.exists():
-        size_mb = vhd_rootfs.stat().st_size / (1024 * 1024)
-        print(f"[*] Menambahkan rootfs.img dari VHD ({size_mb:.1f} MB)...")
-        target_img = mitra_dest / "rootfs.img"
-        try:
-            os.link(vhd_rootfs, target_img)
-        except Exception:
-            shutil.copy2(vhd_rootfs, target_img)
-
 
     # 4. Rootfs Overlay & System Configs
     shutil.copytree(REPO_ROOT / "rootfs", staging / "rootfs", dirs_exist_ok=True)
@@ -115,7 +104,6 @@ def prepare_staging(staging_dir, config):
     shutil.copy2(globals_src, staging / "rootfs" / "bin" / "mitra-globals")
 
     shutil.copytree(REPO_ROOT / "core" / "modules", apollo_dest / "tools" / "modules", dirs_exist_ok=True)
-    shutil.copytree(staging / "rootfs", apollo_dest / "rootfs", dirs_exist_ok=True)
     shutil.copytree(REPO_ROOT / "assets" / "branding", apollo_dest / "images", dirs_exist_ok=True)
 
     # 6. First-Boot Configs
