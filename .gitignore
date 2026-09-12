@@ -10,4 +10,7 @@ build/*.png
 *.log
 *.bin
 mitraos_*.png
+*.ext4
+*.tar.gz
+scratch/
 __pycache__/
