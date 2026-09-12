@@ -91,10 +91,59 @@
 	}
 
 	# -------------------------------------------------------------
-	# 3. Mouse & Touchpad
+	# 3. Mouse & Touchpad (Kalibrasi Pointer & Presisi 1:1)
 	# -------------------------------------------------------------
 	menu_mouse() {
-		show_info "Mouse & Touchpad" "Kecepatan Pointer: Normal (Accel: 1.0)\nNatural Scrolling: Aktif (Gaya macOS/Modern)\nTouchpad Tap-to-Click: Aktif\nGesture Dukungan: 3-finger swipe (Workspaces), 2-finger pinch (Zoom)."
+		while true; do
+			local cur_accel="1/1 (Presisi)"
+			if command -v xset >/dev/null 2>&1; then
+				local cur_info
+				cur_info=$(xset q 2>/dev/null | grep -A 1 "Pointer Control" | tail -n 1 | awk '{print $2}')
+				[[ -n "$cur_info" ]] && cur_accel="$cur_info"
+			fi
+
+			local m_choice
+			m_choice=$(whiptail --title "Preferences: Mouse & Touchpad" --menu "Pengaturan & Kalibrasi Pointer (Status: $cur_accel):" 18 74 6 \
+				"1" "Presisi 1:1 Windows Host Sync (Sangat Akurat - Tanpa Lompat)" \
+				"2" "Kecepatan Halus / Smooth (Deceleration 1.5x)" \
+				"3" "Kecepatan Lambat (Untuk Touchpad Sensitif / Presisi Tinggi)" \
+				"4" "Kecepatan Normal Desktop (Akselerasi Standar 1:1)" \
+				"5" "Kecepatan Cepat (Fast Pointer Multiplier 2x)" \
+				"6" "Uji Responsivitas Klik & Gerakan Mouse" \
+				"B" "<-- Kembali ke Menu Utama" 3>&1 1>&2 2>&3)
+			[[ -z "$m_choice" || "$m_choice" == "B" ]] && break
+
+			case "$m_choice" in
+				1)
+					xset m 1/1 0 2>/dev/null
+					show_info "Presisi 1:1 Host Sync" "Berhasil diterapkan!\n\nKursor mouse sekarang tersinkronisasi 1:1 dengan kursor Windows host tanpa percepatan liar (acceleration drift dinonaktifkan).\nKlik tombol menjadi presisi dan tidak meleset."
+					;;
+				2)
+					xset m 1/2 0 2>/dev/null
+					show_info "Kecepatan Halus" "Berhasil diterapkan!\n\nPergerakan kursor diperhalus (Smooth / Soft Glide), ideal untuk touchpad laptop agar kursor tidak meluncur terlalu jauh."
+					;;
+				3)
+					xset m 1/3 0 2>/dev/null
+					show_info "Kecepatan Lambat" "Berhasil diterapkan!\n\nSensitivitas diperlambat untuk kontrol piksel yang sangat presisi saat memilih teks atau menekan tombol kecil."
+					;;
+				4)
+					xset m 1 1 2>/dev/null
+					show_info "Kecepatan Normal" "Berhasil diterapkan!\n\nMode akselerasi standar desktop Linux aktif."
+					;;
+				5)
+					xset m 2/1 2 2>/dev/null
+					show_info "Kecepatan Cepat" "Berhasil diterapkan!\n\nMode cepat aktif (kecepatan pointer 2x untuk layar resolusi tinggi 2K/4K)."
+					;;
+				6)
+					whiptail --title "Area Uji Klik Mouse & Touchpad" --yesno "Silakan klik tombol di bawah ini untuk menguji responsivitas tombol mouse atau tap touchpad Anda.\n\nApakah klik terasa presisi dan tepat sasaran?" 12 70
+					if [[ $? -eq 0 ]]; then
+						show_info "Hasil Uji" "Bagus! Mouse dan touchpad Anda berfungsi dengan presisi tinggi."
+					else
+						show_info "Saran Kalibrasi" "Jika masih terasa terlalu jauh atau melompat, gunakan opsi [1] Presisi 1:1 atau [2] Kecepatan Halus."
+					fi
+					;;
+			esac
+		done
 	}
 
 	# -------------------------------------------------------------

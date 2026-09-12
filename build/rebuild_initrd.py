@@ -205,7 +205,10 @@ def patch_initrd():
 	mknod -m 666 "${rootmnt}/dev/ptmx" c 5 2 2>/dev/null || true
 	mknod -m 666 "${rootmnt}/dev/tty" c 5 0 2>/dev/null || true
 	mknod -m 620 "${rootmnt}/dev/tty1" c 4 1 2>/dev/null || true
-	mknod -m 660 "${rootmnt}/dev/fb0" c 29 0 2>/dev/null || true'''
+	mknod -m 660 "${rootmnt}/dev/fb0" c 29 0 2>/dev/null || true
+	mkdir -p "${rootmnt}/dev/input" 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/mice" c 13 63 2>/dev/null || true
+	mknod -m 666 "${rootmnt}/dev/input/mouse0" c 13 32 2>/dev/null || true'''
             if cp_target in live_content:
                 live_content = live_content.replace(cp_target, dev_patch)
                 print("  [+] scripts/live device nodes patch applied!")

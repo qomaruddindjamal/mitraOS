@@ -1,6 +1,10 @@
 #!/bin/sh
 xset s off -dpms 2>/dev/null &
 
+# Host pointer synchronization (1:1 precision, zero acceleration drift)
+xset m 1/1 0 2>/dev/null &
+xset r rate 250 30 2>/dev/null &
+
 # Intelligent HD wallpaper auto-detection (800x600 up to 4K)
 if [ -x /usr/bin/mitra-wallpaper ]; then
     /usr/bin/mitra-wallpaper --auto &
