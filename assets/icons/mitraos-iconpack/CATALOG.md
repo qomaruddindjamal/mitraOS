@@ -31,6 +31,10 @@
 | 16 | `system-preferences` | `preferences-system-power.png` | Daya (Power & Battery) |
 | 17 | `system-preferences` | `preferences-system-hardware.png` | Sistem (Hardware & CPU) |
 | 18 | `system-preferences` | `help-about.png` | Tentang (About MitraOS) |
+| 19 | `system-preferences` | `preferences-system-mouse.png` | Mouse & Touchpad (Speed, Sync & Calibration) |
+| 20 | `system-preferences` | `audio-volume-muted.png` | Suara Mati (Audio Muted State) |
+| 21 | `system-preferences` | `network-wireless.png` | Nirkabel (Wi-Fi Wireless Network) |
+| 22 | `system-preferences` | `arrow-left.png` | Tombol Kembali (Navigation Back Button) |
 | 19 | `folders` | `folder.png` | Folder (Standard Blue Directory) |
 | 20 | `folders` | `folder-documents.png` | Dokumen (Documents Folder) |
 | 21 | `folders` | `folder-pictures.png` | Gambar (Pictures / Photos Folder) |
